@@ -82,6 +82,7 @@ class MainActivity : AppCompatActivity() {
             val device = binding?.editTextUri?.getText().toString()
 
 
+            //GlobalScope.launch(/*Dispatchers.IO*/) {
             GlobalScope.launch(Dispatchers.IO) {
                 try {
                     var url = "http://".plus( device);
@@ -92,9 +93,12 @@ class MainActivity : AppCompatActivity() {
                         val low = jsonObject.getString("low")
                         val high = jsonObject.getString("high")
                         val c = jsonObject.getString("c")
-                        binding.textViewLow.setText(low.plus("c"))
-                        binding.textViewC.setText(c.plus("c"))
-                        binding.textViewHigh.setText(high.plus("c"))
+                        this@MainActivity.runOnUiThread(java.lang.Runnable {
+                            binding.textViewLow.setText(low.plus("c"))
+                            binding.textViewC.setText(c.plus("c"))
+                            binding.textViewHigh.setText(high.plus("c"))
+                        })
+
                     }catch(e: Exception){
                         binding.debug.setText(e.toString())
                     }
