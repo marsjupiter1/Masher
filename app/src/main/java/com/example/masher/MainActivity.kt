@@ -13,6 +13,8 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
+import org.json.JSONObject
+import org.json.JSONTokener
 import java.net.URL
 
 class MainActivity : AppCompatActivity() {
@@ -85,11 +87,20 @@ class MainActivity : AppCompatActivity() {
                     var url = "http://".plus( device);
                     binding.textViewResult.setText(url);
                     val result = URL(url).readText().toString()
-
-                    binding.textViewResult.setText(result)
+                    try{
+                        val jsonObject = JSONTokener(result).nextValue() as JSONObject
+                        val low = jsonObject.getString("low")
+                        val high = jsonObject.getString("high")
+                        val c = jsonObject.getString("c")
+                        binding.textViewLow.setText(low.plus("c"))
+                        binding.textViewC.setText(c.plus("c"))
+                        binding.textViewHigh.setText(high.plus("c"))
+                    }catch(e: Exception){
+                        binding.debug.setText(e.toString())
+                    }
                    // binding.textViewResult.setText("blah")
                 } catch (e: Exception) {
-                    binding.textViewResult.setText(e.toString())
+                    binding.debug.setText(e.toString())
                 }
             }
             val editor:SharedPreferences.Editor? =  sharedPref?.edit()
