@@ -28,33 +28,37 @@
 
     <EditText
         android:id="@+id/editTextNumberMin"
-        android:layout_width="266dp"
-        android:layout_height="38dp"
-        android:layout_marginTop="20dp"
+        android:layout_width="153dp"
+        android:layout_height="37dp"
         android:ems="10"
         android:inputType="number"
         android:minHeight="48dp"
-        app:layout_constraintStart_toStartOf="@+id/editTextNumberMax"
-        app:layout_constraintTop_toBottomOf="@+id/editTextUri" />
+        app:layout_constraintBottom_toBottomOf="@+id/textView"
+        app:layout_constraintEnd_toEndOf="@+id/editTextUri"
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="@+id/editTextUri" />
 
     <TextView
         android:id="@+id/textView"
         android:layout_width="wrap_content"
         android:layout_height="19dp"
-        android:layout_marginTop="32dp"
+        android:layout_marginTop="40dp"
         android:text="Min"
+        android:textSize="24sp"
         app:layout_constraintEnd_toEndOf="@+id/textView3"
         app:layout_constraintTop_toBottomOf="@+id/textView3" />
 
     <EditText
         android:id="@+id/editTextNumberMax"
-        android:layout_width="180dp"
-        android:layout_height="48dp"
-        android:layout_marginStart="72dp"
+        android:layout_width="154dp"
+        android:layout_height="44dp"
         android:layout_marginTop="20dp"
         android:ems="10"
         android:inputType="number"
+        android:textSize="24sp"
+        app:layout_constraintEnd_toEndOf="@+id/editTextNumberMin"
         app:layout_constraintStart_toEndOf="@+id/textView2"
+        app:layout_constraintStart_toStartOf="@+id/editTextNumberMin"
         app:layout_constraintTop_toBottomOf="@+id/editTextNumberMin" />
 
     <TextView
@@ -63,6 +67,7 @@
         android:layout_height="19dp"
         android:layout_marginTop="16dp"
         android:text="Max"
+        android:textSize="24sp"
         app:layout_constraintEnd_toEndOf="@+id/textView"
         app:layout_constraintTop_toBottomOf="@+id/textView" />
 
@@ -70,22 +75,24 @@
         android:id="@+id/editTextUri"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="52dp"
-        android:layout_marginTop="123dp"
-        android:ems="10"
+        android:layout_marginStart="16dp"
+        android:layout_marginTop="200dp"
         android:inputType="textUri"
-        android:minHeight="48dp"
         android:text="192.168.68.82"
+        android:textSize="24sp"
+        app:layout_constraintBottom_toBottomOf="@+id/textView3"
         app:layout_constraintStart_toEndOf="@+id/textView3"
-        app:layout_constraintTop_toBottomOf="@+id/textViewC" />
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintVertical_bias="0.0" />
 
     <TextView
         android:id="@+id/textView3"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="56dp"
-        android:layout_marginTop="256dp"
+        android:layout_marginStart="32dp"
+        android:layout_marginTop="200dp"
         android:text="IP address"
+        android:textSize="24sp"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -110,30 +117,43 @@
         android:id="@+id/textViewLow"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="76dp"
-        android:layout_marginTop="91dp"
-        android:text="TextView"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_marginStart="30dp"
+        android:text="Low"
+        android:textAlignment="center"
+        android:textColor="#4CAF50"
+        android:textColorLink="#FF9800"
+        android:textSize="34sp"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewC"
+        app:layout_constraintStart_toStartOf="parent" />
 
     <TextView
         android:id="@+id/textViewC"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="41dp"
-        android:layout_marginTop="98dp"
-        android:text="TextView"
-        app:layout_constraintStart_toEndOf="@+id/textViewLow"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_marginStart="51dp"
+        android:layout_marginEnd="51dp"
+        android:text="Mean"
+        android:textAlignment="center"
+        android:textColor="#FF9800"
+        android:textColorLink="#4CAF50"
+        android:textSize="34sp"
+        app:layout_constraintBottom_toBottomOf="@+id/textViewHigh"
+        app:layout_constraintEnd_toStartOf="@+id/textViewHigh"
+        app:layout_constraintHorizontal_bias="0.49"
+        app:layout_constraintStart_toEndOf="@+id/textViewLow" />
 
     <TextView
         android:id="@+id/textViewHigh"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="28dp"
         android:layout_marginTop="98dp"
-        android:text="TextView"
-        app:layout_constraintStart_toEndOf="@+id/textViewC"
+        android:layout_marginEnd="30dp"
+        android:text="High"
+        android:textAlignment="center"
+        android:textColor="#E80505"
+        android:textColorLink="#F44336"
+        android:textSize="34sp"
+        app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
