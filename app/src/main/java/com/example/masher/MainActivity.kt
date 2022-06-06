@@ -2,6 +2,7 @@ package com.example.masher
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
@@ -9,6 +10,7 @@ import com.example.masher.databinding.ActivityMainBinding
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.SystemClock.sleep
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -16,6 +18,12 @@ import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.net.URL
+import android.view.Menu
+import android.view.MenuItem
+import android.widget.Toolbar;
+import androidx.preference.Preference
+
+import androidx.preference.PreferenceFragmentCompat
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -25,22 +33,25 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         //setContentView(R.layout.activity_main)
 
+
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
         binding.debug.text = "hello workd"
-        val sharedPref =  getPreferences(Context.MODE_PRIVATE)
-        val min =sharedPref.getString("min","55")
-        val max =  sharedPref.getString("max","57")
-        val device = sharedPref.getString("ip","192.168.68.80")
+        val sharedPref = getPreferences(Context.MODE_PRIVATE)
+        val min = sharedPref.getString("min", "55")
+        val max = sharedPref.getString("max", "57")
+        val device = sharedPref.getString("ip", "192.168.68.80")
         binding.editTextNumberMin.setText(min)
-        binding.editTextNumberMax.setText( max)
+        binding.editTextNumberMax.setText(max)
         binding.editTextUri.setText(device)
         binding.debug.setText("setup");
 
+        //setSupportActionBar(binding.toolbar)
+
         binding.run.setOnClickListener {
             val sharedPref = getPreferences(Context.MODE_PRIVATE)
-            Log.d("masher","run");
+            Log.d("masher", "run");
 
             binding.debug.setText("onClick");
 
@@ -51,33 +62,36 @@ class MainActivity : AppCompatActivity() {
 
             //GlobalScope.launch(/*Dispatchers.IO*/) {
             GlobalScope.launch(Dispatchers.IO) {
-                try {
-                    var url = "http://".plus( device);
-                    binding.textViewResult.setText(url);
-                    val result = URL(url).readText().toString()
-                    try{
-                        val jsonObject = JSONTokener(result).nextValue() as JSONObject
-                        val low = String.format("%.1f",jsonObject.getString("low").toFloat())
-                        val high = String.format("%.1f",jsonObject.getString("high").toFloat())
-                        val c = String.format("%.1f",jsonObject.getString("c").toFloat())
-                        this@MainActivity.runOnUiThread(java.lang.Runnable {
-                            binding.textViewLow.setText(low.plus("c"))
-                            binding.textViewC.setText(c.plus("c"))
-                            binding.textViewHigh.setText(high.plus("c"))
-                        })
+                while (true) {
+                    try {
+                        var url = "http://".plus(device);
+                        binding.textViewResult.setText(url);
+                        val result = URL(url).readText().toString()
+                        try {
+                            val jsonObject = JSONTokener(result).nextValue() as JSONObject
+                            val low = String.format("%.1f", jsonObject.getString("low").toFloat())
+                            val high = String.format("%.1f", jsonObject.getString("high").toFloat())
+                            val c = String.format("%.1f", jsonObject.getString("c").toFloat())
+                            this@MainActivity.runOnUiThread(java.lang.Runnable {
+                                binding.textViewLow.setText(low.plus("c"))
+                                binding.textViewC.setText(c.plus("c"))
+                                binding.textViewHigh.setText(high.plus("c"))
+                            })
 
-                    }catch(e: Exception){
+                        } catch (e: Exception) {
+                            binding.debug.setText(e.toString())
+                        }
+                        // binding.textViewResult.setText("blah")
+                    } catch (e: Exception) {
                         binding.debug.setText(e.toString())
                     }
-                   // binding.textViewResult.setText("blah")
-                } catch (e: Exception) {
-                    binding.debug.setText(e.toString())
+                    sleep(1000)
                 }
             }
-            val editor:SharedPreferences.Editor? =  sharedPref?.edit()
+            val editor: SharedPreferences.Editor? = sharedPref?.edit()
             editor?.putString("ip", device)
-            editor?.putString("min",min)
-            editor?.putString("max",max)
+            editor?.putString("min", min)
+            editor?.putString("max", max)
             editor?.apply()
             editor?.commit()
 
@@ -85,9 +99,69 @@ class MainActivity : AppCompatActivity() {
         }
 
 
-
-
         //binding = DataBindingUtil.setContentView<ActivityMainBinding>(this@MainActivity, R.layout.activity_main)
+
+    }
+    override fun onCreateOptionsMenu( menu: Menu): Boolean{
+        getMenuInflater().inflate(R.menu.main_menu, menu);
+        return true;
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                // navigate to settings screen
+                startActivity( Intent(this,MySettingsActivity::class.java ))
+                true
+            }
+            R.id.action_done -> {
+                // save profile changes
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+}
+
+public final class MySettingsActivity : AppCompatActivity() {
+    companion object {
+        private const val TAG = "PreferencesActivity"
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supportFragmentManager
+            .beginTransaction()
+            .replace(R.id.settings_container, SettingsFragment())
+            .commit()
+        setContentView(R.layout.settings)
+
+    }
+    override fun onDestroy() {
+        super.onDestroy()
+
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_settings -> {
+                // navigate to settings screen
+                true
+            }
+            R.id.action_done -> {
+                // save profile changes
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+}
+
+class Preferences : PreferenceFragmentCompat() {
+    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        setPreferencesFromResource(R.xml.root_preferences, rootKey)
+
 
     }
 }
