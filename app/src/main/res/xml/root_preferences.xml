@@ -20,7 +20,9 @@
             android:key="edit_text_preference_ip"
             android:selectAllOnFocus="true"
             android:singleLine="true"
+            android:textAlignment="textEnd"
             android:title="@string/ip_address"
+            app:singleLineTitle="true"
             app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
