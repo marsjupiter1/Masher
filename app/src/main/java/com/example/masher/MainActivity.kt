@@ -24,15 +24,21 @@ import android.widget.Toolbar;
 import androidx.preference.Preference
 
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.PreferenceManager
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
+
+    // SharedPreferences keeps listeners in a WeakHashMap, so keep this as a member.
+    private val sharedPreferenceListener = SharedPreferencesChangeListener()
 
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
         //setContentView(R.layout.activity_main)
-
+        val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+        preferences.registerOnSharedPreferenceChangeListener(sharedPreferenceListener)
+        DataModel.init(applicationContext, preferences)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -114,54 +120,8 @@ class MainActivity : AppCompatActivity() {
                 startActivity( Intent(this,MySettingsActivity::class.java ))
                 true
             }
-            R.id.action_done -> {
-                // save profile changes
-                true
-            }
+
             else -> super.onOptionsItemSelected(item)
         }
-    }
-}
-
-public final class MySettingsActivity : AppCompatActivity() {
-    companion object {
-        private const val TAG = "PreferencesActivity"
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        supportFragmentManager
-            .beginTransaction()
-            .replace(R.id.settings_container, SettingsFragment())
-            .commit()
-        setContentView(R.layout.settings)
-
-    }
-    override fun onDestroy() {
-        super.onDestroy()
-
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.action_settings -> {
-                // navigate to settings screen
-                true
-            }
-            R.id.action_done -> {
-                // save profile changes
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
-
-}
-
-class Preferences : PreferenceFragmentCompat() {
-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
-        setPreferencesFromResource(R.xml.root_preferences, rootKey)
-
-
     }
 }

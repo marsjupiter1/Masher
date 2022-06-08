@@ -4,10 +4,11 @@
     <string name="reply_title">reply</string>
     <string name="sync_header">Sync</string>
     <string name="messages_header">header</string>
-    <string name="done">done</string>
-    <string name="sync_title">title</string>
-    <string name="attachment_title">Download incoming attachments</string>
-    <string name="attachment_summary_on">Automatically download attachments for incoming emails
-    </string>
+    <string name="ip_address">Ip Address</string>
+    <string name="import_success">Successful Import</string>
+    <string name="export_success">Successful Export</string>
+    <string name="settings_category_theme">Theme (May Require Restart)</string>
+    <string name="settings_follow_system_theme">Follow System Theme</string>
+    <string name="settings_enable_dark_theme">Dark Mode</string>
     <string name="attachment_summary_off">Only download attachments when manually requested</string>
 </resources>
