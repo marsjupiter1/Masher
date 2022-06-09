@@ -18,9 +18,7 @@ import com.github.mikephil.charting.components.YAxis
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.net.URL
@@ -44,22 +42,15 @@ class MyCustomFormatter() : IndexAxisValueFormatter()
     }
 }
 
-class MyCustomFormatter1 : IndexAxisValueFormatter() {
-
-    override fun getFormattedValue(value: Float): String? {
-        // Convert float value to date string
-        // Convert from seconds back to milliseconds to format time  to show to the user
-        val emissionsMilliSince1970Time = (value.toLong()+ time_offset) * 1000
-
-        // Show time in local version
-        val timeMilliseconds = Date(emissionsMilliSince1970Time)
-        val dateTimeFormat = DateFormat.getDateInstance(DateFormat.MEDIUM, Locale.getDefault())
-        return dateTimeFormat.format(timeMilliseconds)
-    }
-}
+val set: ArrayList<ILineDataSet> = ArrayList()
+val low_entries:ArrayList<Entry> = ArrayList()
+val high_entries:ArrayList<Entry> = ArrayList()
+var low=0f
+var high=0f
+var device=""
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityMainBinding
+    lateinit var binding: ActivityMainBinding
 
     // SharedPreferences keeps listeners in a WeakHashMap, so keep this as a member.
     private val sharedPreferenceListener = SharedPreferencesChangeListener()
@@ -67,6 +58,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
 
         super.onCreate(savedInstanceState)
+
 
         val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
         preferences.registerOnSharedPreferenceChangeListener(sharedPreferenceListener)
@@ -110,72 +102,40 @@ class MainActivity : AppCompatActivity() {
                 chart.legend.isEnabled = false
                 chart.axisRight.isEnabled = false
                 val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-                val sharedPref = getPreferences(Context.MODE_PRIVATE)
-                val set: ArrayList<ILineDataSet> = ArrayList()
-                val low_entries:ArrayList<Entry> = ArrayList()
-                val high_entries:ArrayList<Entry> = ArrayList()
-
                 while (true) {
                     count++
-                    val min = sharedPref.getString("min", "55")
-                    val max = sharedPref.getString("max", "57")
-                    val device = preferences.getString("edit_text_preference_ip", "192.168.68.90")
+
+                    device = preferences.getString("edit_text_preference_ip", "192.168.68.90").toString()
                     try {
                         var url = "http://".plus(device);
 
-                        val result = URL(url).readText().toString()
-                        try {
-                            val jsonObject = JSONTokener(result).nextValue() as JSONObject
-                            val low = String.format("%.1f", jsonObject.getString("low").toFloat())
-                            val high = String.format("%.1f", jsonObject.getString("high").toFloat())
-                            val c = String.format("%.1f", jsonObject.getString("c").toFloat())
-                            this@MainActivity.runOnUiThread(java.lang.Runnable {
-                                binding.textViewLow.setText(low.plus("c"))
-                                binding.textViewC.setText(c.plus("c"))
-                                binding.textViewHigh.setText(high.plus("c"))
 
-                                val f1: Float =      jsonObject.getString("low").toFloat()
-                                val f2: Float =      jsonObject.getString("high").toFloat()
-                                //nstant.now()
+                        val c = String.format("%.1f", (low+high)/2)
+                        this@MainActivity.runOnUiThread(java.lang.Runnable {
+                            binding.textViewLow.setText(String.format("%.1f", low).plus("c"))
+                            binding.textViewC.setText(c.plus("c"))
+                            binding.textViewHigh.setText(String.format("%.1f", high).plus("c"))
 
-                                if ((count % 10)==1) {
+                            if ((count % 10) == 1) {
 
-                                   low_entries.add(
-                                        Entry(
-                                            (System.currentTimeMillis()/1000 -time_offset).toFloat() ,
-                                            f1
-                                        )
-                                    )
-                                    val lineDataSetLow = LineDataSet(low_entries, "")
-                                    lineDataSetLow.setColor(Color.GREEN)
-                                    lineDataSetLow.setDrawValues(false);
-                                    lineDataSetLow.setDrawCircles(false);
-                                    set.clear()
-                                    set.add(lineDataSetLow)
+                                val lineDataSetLow = LineDataSet(low_entries, "")
+                                lineDataSetLow.setColor(Color.GREEN)
+                                lineDataSetLow.setDrawValues(false);
+                                lineDataSetLow.setDrawCircles(false);
+                                set.clear()
+                                set.add(lineDataSetLow)
+                                val lineDataSetHigh = LineDataSet(high_entries, "")
+                                lineDataSetHigh.setColor(Color.RED)
+                                lineDataSetHigh.setDrawValues(false);
+                                lineDataSetHigh.setDrawCircles(false);
+                                set.add(lineDataSetHigh)
+                                val data = LineData(set)
 
-                                    high_entries.add(
-                                        Entry(
-                                            (System.currentTimeMillis()/1000 -time_offset).toFloat(),
-                                            f2
-                                        )
-                                    )
-                                    val lineDataSetHigh = LineDataSet(high_entries, "")
-                                    lineDataSetHigh.setColor(Color.RED)
-                                    lineDataSetHigh.setDrawValues(false);
-                                    lineDataSetHigh.setDrawCircles(false);
-                                    set.add(lineDataSetHigh)
-                                    val data = LineData(set)
+                                chart.setData(data)
 
-                                    chart.setData( data)
-
-                                    chart.invalidate()
-                                }
-                            })
-
-                        } catch (e: Exception) {
-                            binding.debug.setText(e.toString())
-                        }
-                        // binding.textViewResult.setText("blah")
+                                chart.invalidate()
+                            }
+                        }   )
                     } catch (e: Exception) {
                         binding.debug.setText(e.toString())
                     }
@@ -212,5 +172,67 @@ class MainActivity : AppCompatActivity() {
             else -> super.onOptionsItemSelected(item)
         }
     }
+
+    fun GetBinding() :ActivityMainBinding{
+        return this.binding
+    }
 }
 
+
+// A global coroutine to log statistics every second, must be always active
+@OptIn(DelicateCoroutinesApi::class)
+val globalScopeReporter = GlobalScope.launch {
+
+        var count = 0
+
+        while (true) {
+            count++
+
+            try {
+                var url = "http://".plus(device);
+
+                val result = URL(url).readText().toString()
+
+                    val jsonObject = JSONTokener(result).nextValue() as JSONObject
+                    low = jsonObject.getString("low").toFloat()
+                    high = jsonObject.getString("high").toFloat()
+                    val c = String.format("%.1f", jsonObject.getString("c").toFloat())
+
+                        if ((count % 10)==1) {
+
+                            low_entries.add(
+                                Entry(
+                                    (System.currentTimeMillis()/1000 -time_offset).toFloat() ,
+                                    low
+                                )
+                            )
+                            val lineDataSetLow = LineDataSet(low_entries, "")
+                            lineDataSetLow.setColor(Color.GREEN)
+                            lineDataSetLow.setDrawValues(false);
+                            lineDataSetLow.setDrawCircles(false);
+                            set.clear()
+                            set.add(lineDataSetLow)
+
+                            high_entries.add(
+                                Entry(
+                                    (System.currentTimeMillis()/1000 -time_offset).toFloat(),
+                                    high
+                                )
+                            )
+                            val lineDataSetHigh = LineDataSet(high_entries, "")
+                            lineDataSetHigh.setColor(Color.RED)
+                            lineDataSetHigh.setDrawValues(false);
+                            lineDataSetHigh.setDrawCircles(false);
+                            set.add(lineDataSetHigh)
+
+                        }
+
+
+
+                // binding.textViewResult.setText("blah")
+            } catch (e: Exception) {
+
+            sleep(1000)
+        }
+    }
+}
