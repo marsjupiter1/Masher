@@ -1,54 +1,46 @@
 package com.example.masher
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.os.Bundle
-import androidx.appcompat.app.AppCompatActivity
-import androidx.databinding.DataBindingUtil
-import com.example.masher.databinding.ActivityMainBinding
 import android.content.SharedPreferences
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
+import android.graphics.Color
+import android.os.Bundle
 import android.os.SystemClock.sleep
 import android.util.Log
+import android.view.Menu
+import android.view.MenuItem
+import androidx.appcompat.app.AppCompatActivity
+import androidx.preference.PreferenceManager
+import com.example.masher.databinding.ActivityMainBinding
+import com.github.mikephil.charting.components.AxisBase
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.components.YAxis
+import com.github.mikephil.charting.data.*
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.net.URL
-import android.view.Menu
-import android.view.MenuItem
-import com.github.mikephil.charting.charts.BarChart;
-import com.github.mikephil.charting.utils.ColorTemplate;
-import android.widget.Toolbar;
-import androidx.preference.Preference
-
-import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.PreferenceManager
-import com.github.mikephil.charting.charts.LineChart
-import com.github.mikephil.charting.components.AxisBase
-import com.github.mikephil.charting.data.*
-import com.github.mikephil.charting.formatter.IAxisValueFormatter
-import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
-import com.github.mikephil.charting.utils.ViewPortHandler
 import java.text.DateFormat
 import java.text.SimpleDateFormat
-import java.time.Instant
 import java.util.*
-import kotlin.collections.ArrayList
+
+
+val  time_offset:Long = 1654717191;
 
 class MyCustomFormatter() : IndexAxisValueFormatter()
 {
-    override fun getFormattedValue(value: Float, axis: AxisBase?): String
+    override fun getFormattedValue(value: Float): String
     {
-        val dateInMillis = value.toLong()
+        val dateInMillis = (value.toLong()+time_offset)*1000;
         val date = Calendar.getInstance().apply {
             timeInMillis = dateInMillis
         }.time
 
-        return SimpleDateFormat("hh:mm", Locale.getDefault()).format(date)
+        return SimpleDateFormat("hh:mm:ss", Locale.getDefault()).format(date)
     }
 }
 
@@ -57,7 +49,7 @@ class MyCustomFormatter1 : IndexAxisValueFormatter() {
     override fun getFormattedValue(value: Float): String? {
         // Convert float value to date string
         // Convert from seconds back to milliseconds to format time  to show to the user
-        val emissionsMilliSince1970Time = value.toLong() * 1000
+        val emissionsMilliSince1970Time = (value.toLong()+ time_offset) * 1000
 
         // Show time in local version
         val timeMilliseconds = Date(emissionsMilliSince1970Time)
@@ -103,11 +95,26 @@ class MainActivity : AppCompatActivity() {
             GlobalScope.launch(Dispatchers.IO){
                 var count = 0
                 val  chart = binding.chart
-                chart?.xAxis?.valueFormatter = MyCustomFormatter()
+                val xAxis: XAxis = chart.getXAxis()
+                val yAxis: YAxis = chart.getAxisLeft()
+                yAxis.setTextSize(18f)
+                xAxis.position = XAxis.XAxisPosition.BOTTOM
+
+                xAxis.valueFormatter = MyCustomFormatter()
+                xAxis.setDrawLabels(true)
+                xAxis.setLabelRotationAngle((-45.0).toFloat());
+                xAxis.setTextSize(18f);
                 chart.getDescription().setEnabled(false);
+
+
+                chart.legend.isEnabled = false
+                chart.axisRight.isEnabled = false
                 val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
                 val sharedPref = getPreferences(Context.MODE_PRIVATE)
-                val entries: ArrayList<Entry> = ArrayList()
+                val set: ArrayList<ILineDataSet> = ArrayList()
+                val low_entries:ArrayList<Entry> = ArrayList()
+                val high_entries:ArrayList<Entry> = ArrayList()
+
                 while (true) {
                     count++
                     val min = sharedPref.getString("min", "55")
@@ -130,17 +137,36 @@ class MainActivity : AppCompatActivity() {
                                 val f1: Float =      jsonObject.getString("low").toFloat()
                                 val f2: Float =      jsonObject.getString("high").toFloat()
                                 //nstant.now()
-                                if ((count % 10)==0) {
-                                    entries.add(
+
+                                if ((count % 10)==1) {
+
+                                   low_entries.add(
                                         Entry(
-                                            System.currentTimeMillis().toFloat() / 1000,
+                                            (System.currentTimeMillis()/1000 -time_offset).toFloat() ,
+                                            f1
+                                        )
+                                    )
+                                    val lineDataSetLow = LineDataSet(low_entries, "")
+                                    lineDataSetLow.setColor(Color.GREEN)
+                                    lineDataSetLow.setDrawValues(false);
+                                    lineDataSetLow.setDrawCircles(false);
+                                    set.clear()
+                                    set.add(lineDataSetLow)
+
+                                    high_entries.add(
+                                        Entry(
+                                            (System.currentTimeMillis()/1000 -time_offset).toFloat(),
                                             f2
                                         )
                                     )
-                                    val lineDataSet = LineDataSet(entries, "")
+                                    val lineDataSetHigh = LineDataSet(high_entries, "")
+                                    lineDataSetHigh.setColor(Color.RED)
+                                    lineDataSetHigh.setDrawValues(false);
+                                    lineDataSetHigh.setDrawCircles(false);
+                                    set.add(lineDataSetHigh)
+                                    val data = LineData(set)
 
-                                    val data = LineData(lineDataSet)
-                                    chart.data = data
+                                    chart.setData( data)
 
                                     chart.invalidate()
                                 }
