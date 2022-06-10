@@ -10,5 +10,9 @@
     <string name="settings_category_theme">Theme (May Require Restart)</string>
     <string name="settings_follow_system_theme">Follow System Theme</string>
     <string name="settings_enable_dark_theme">Dark Mode</string>
-    <string name="attachment_summary_off">Only download attachments when manually requested</string>
+    <string name="host_address">Tuya API host</string>
+    <string name="client_id">Tuya Client Id</string>
+    <string name="api_key">Tuya API Secret Key</string>
+    <string name="heating_id">Heating Device id</string>
+    <string name="cooling_id">Cooling_device_id</string>
 </resources>

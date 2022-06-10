@@ -30,6 +30,13 @@ class SharedPreferencesChangeListener : SharedPreferences.OnSharedPreferenceChan
             }
             return
         }
+        device = sharedPreferences.getString("edit_text_preference_ip", "").toString()
+        heating_id = sharedPreferences.getString("edit_text_preference_heating_id", "").toString()
+        cooling_id = sharedPreferences.getString("edit_text_preference_cooling_id", "").toString()
+        api_key = sharedPreferences.getString("edit_text_preference_ip", "").toString()
+        client_id = sharedPreferences.getString("edit_text_preference_client_id", "").toString()
+        tuya_host = sharedPreferences.getString("edit_text_preference_host", "").toString()
+        applySettings()
 
         applyTheme(sharedPreferences)
     }

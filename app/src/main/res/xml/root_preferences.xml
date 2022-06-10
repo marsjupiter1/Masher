@@ -24,6 +24,51 @@
             android:title="@string/ip_address"
             app:singleLineTitle="true"
             app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:defaultValue="https://openapi.tuyaeu.com"
+            android:key="edit_text_preference_host"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:textAlignment="textEnd"
+            android:title="@string/host_address"
+            app:singleLineTitle="true"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:defaultValue=""
+            android:key="edit_text_preference_client_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:textAlignment="textEnd"
+            android:title="@string/client_id"
+            app:singleLineTitle="true"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:defaultValue=""
+            android:key="edit_text_preference_api_key"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:textAlignment="textEnd"
+            android:title="@string/api_key"
+            app:singleLineTitle="true"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:defaultValue=""
+            android:key="edit_text_preference_heating_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:textAlignment="textEnd"
+            android:title="@string/heating_id"
+            app:singleLineTitle="true"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:defaultValue=""
+            android:key="edit_text_preference_cooling_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:textAlignment="textEnd"
+            android:title="@string/cooling_id"
+            app:singleLineTitle="true"
+            app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
 

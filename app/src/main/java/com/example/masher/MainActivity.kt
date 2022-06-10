@@ -12,17 +12,20 @@ import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.PreferenceManager
 import com.example.masher.databinding.ActivityMainBinding
-import com.github.mikephil.charting.components.AxisBase
 import com.github.mikephil.charting.components.XAxis
 import com.github.mikephil.charting.components.YAxis
-import com.github.mikephil.charting.data.*
+import com.github.mikephil.charting.data.Entry
+import com.github.mikephil.charting.data.LineData
+import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import com.github.mikephil.charting.interfaces.datasets.ILineDataSet
-import kotlinx.coroutines.*
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import org.json.JSONTokener
 import java.net.URL
-import java.text.DateFormat
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -48,6 +51,17 @@ val high_entries:ArrayList<Entry> = ArrayList()
 var low=0f
 var high=0f
 var device=""
+var min=0f
+var max=0f
+var init = false
+var newDevice=true
+var deviceChanged=false
+var cooling_id=""
+var heating_id=""
+var api_key=""
+var tuya_host=""
+var client_id=""
+var status="unset"
 
 class MainActivity : AppCompatActivity() {
     lateinit var binding: ActivityMainBinding
@@ -62,6 +76,12 @@ class MainActivity : AppCompatActivity() {
 
         val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
         preferences.registerOnSharedPreferenceChangeListener(sharedPreferenceListener)
+        device= preferences.getString("edit_text_preference_ip","")!!.toString()
+        tuya_host=preferences.getString("edit_text_preference_host","")!!.toString()
+        heating_id=preferences.getString("edit_text_preference_heating_id","")!!.toString()
+        cooling_id=preferences.getString("edit_text_preference_cooling_id","")!!.toString()
+        api_key=preferences.getString("edit_text_preference_api_key","")!!.toString()
+        client_id = preferences.getString("edit_text_preference_client_id","")!!.toString()
         DataModel.init(applicationContext, preferences)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -70,85 +90,95 @@ class MainActivity : AppCompatActivity() {
 
 
         val sharedPref = getPreferences(Context.MODE_PRIVATE)
-        val min = sharedPref.getString("min", "55")
-        val max = sharedPref.getString("max", "57")
-         binding.editTextNumberMin.setText(min)
-        binding.editTextNumberMax.setText(max)
+        min = sharedPref.getString("min", "55")!!.toFloat()
+        max = sharedPref.getString("max", "57")!!.toFloat()
+         binding.editTextNumberMin.setText(min.toString())
+        binding.editTextNumberMax.setText(max.toString())
         binding.run.setOnClickListener {
-            val sharedPref = getPreferences(Context.MODE_PRIVATE)
+
             Log.d("masher", "run");
 
             binding.debug.setText("onClick");
 
-            val min = binding?.editTextNumberMin?.getText().toString()
-            val max = binding?.editTextNumberMax?.getText().toString()
-
-            //GlobalScope.launch(/*Dispatchers.IO*/) {
-            GlobalScope.launch(Dispatchers.IO){
-                var count = 0
-                val  chart = binding.chart
-                val xAxis: XAxis = chart.getXAxis()
-                val yAxis: YAxis = chart.getAxisLeft()
-                yAxis.setTextSize(18f)
-                xAxis.position = XAxis.XAxisPosition.BOTTOM
-
-                xAxis.valueFormatter = MyCustomFormatter()
-                xAxis.setDrawLabels(true)
-                xAxis.setLabelRotationAngle((-45.0).toFloat());
-                xAxis.setTextSize(18f);
-                chart.getDescription().setEnabled(false);
 
 
-                chart.legend.isEnabled = false
-                chart.axisRight.isEnabled = false
-                val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-                while (true) {
-                    count++
-
-                    device = preferences.getString("edit_text_preference_ip", "192.168.68.90").toString()
-                    try {
-                        var url = "http://".plus(device);
-
-
-                        val c = String.format("%.1f", (low+high)/2)
-                        this@MainActivity.runOnUiThread(java.lang.Runnable {
-                            binding.textViewLow.setText(String.format("%.1f", low).plus("c"))
-                            binding.textViewC.setText(c.plus("c"))
-                            binding.textViewHigh.setText(String.format("%.1f", high).plus("c"))
-
-                            if ((count % 10) == 1) {
-
-                                val lineDataSetLow = LineDataSet(low_entries, "")
-                                lineDataSetLow.setColor(Color.GREEN)
-                                lineDataSetLow.setDrawValues(false);
-                                lineDataSetLow.setDrawCircles(false);
-                                set.clear()
-                                set.add(lineDataSetLow)
-                                val lineDataSetHigh = LineDataSet(high_entries, "")
-                                lineDataSetHigh.setColor(Color.RED)
-                                lineDataSetHigh.setDrawValues(false);
-                                lineDataSetHigh.setDrawCircles(false);
-                                set.add(lineDataSetHigh)
-                                val data = LineData(set)
-
-                                chart.setData(data)
-
-                                chart.invalidate()
-                            }
-                        }   )
-                    } catch (e: Exception) {
-                        binding.debug.setText(e.toString())
-                    }
-                    sleep(1000)
-                }
-                binding.debug.setText("ooooooooooo");
-            }
             val editor: SharedPreferences.Editor? = sharedPref?.edit()
-            editor?.putString("min", min)
-            editor?.putString("max", max)
+            editor?.putString("min", min.toString())
+            editor?.putString("max", max.toString())
             editor?.apply()
             editor?.commit()
+            applySettings()
 
+
+        }
+
+        //GlobalScope.launch(/*Dispatchers.IO*/) {
+        GlobalScope.launch(Dispatchers.IO){
+            var count = 0
+            val  chart = binding.chart
+            val xAxis: XAxis = chart.getXAxis()
+            val yAxis: YAxis = chart.getAxisLeft()
+            yAxis.setTextSize(18f)
+            xAxis.position = XAxis.XAxisPosition.BOTTOM
+
+            xAxis.valueFormatter = MyCustomFormatter()
+            xAxis.setDrawLabels(true)
+            xAxis.setLabelRotationAngle((-45.0).toFloat());
+            xAxis.setTextSize(18f);
+            chart.getDescription().setEnabled(false);
+
+
+            chart.legend.isEnabled = false
+            chart.axisRight.isEnabled = false
+
+            while (true) {
+                count++
+                if (deviceChanged){
+                    with (preferences.edit()) {
+                        putString("edit_text_preference_heating_id", heating_id)
+                        putString("edit_text_preference_cooling_id", cooling_id)
+                        putString("edit_text_preference_client_id", client_id)
+                        putString("edit_text_preference_api_key", api_key)
+                        putString("edit_text_preference_host", tuya_host)
+
+                        apply()
+                    }
+                    deviceChanged = false;
+
+                }
+                try {
+
+                    val c = String.format("%.1f", (low+high)/2)
+                    this@MainActivity.runOnUiThread(java.lang.Runnable {
+                        binding.textViewLow.setText(String.format("%.1f", low).plus("c"))
+                        binding.textViewC.setText(c.plus("c"))
+                        binding.textViewHigh.setText(String.format("%.1f", high).plus("c"))
+                        binding.debug.setText(status)
+                        if ((count % 10) == 1) {
+
+                            val lineDataSetLow = LineDataSet(low_entries, "")
+                            lineDataSetLow.setColor(Color.GREEN)
+                            lineDataSetLow.setDrawValues(false);
+                            lineDataSetLow.setDrawCircles(false);
+                            set.clear()
+                            set.add(lineDataSetLow)
+                            val lineDataSetHigh = LineDataSet(high_entries, "")
+                            lineDataSetHigh.setColor(Color.RED)
+                            lineDataSetHigh.setDrawValues(false);
+                            lineDataSetHigh.setDrawCircles(false);
+                            set.add(lineDataSetHigh)
+                            val data = LineData(set)
+
+                            chart.setData(data)
+
+                            chart.invalidate()
+                        }
+                    }   )
+                } catch (e: Exception) {
+                    binding.debug.setText(e.toString())
+                }
+                sleep(1000)
+            }
 
         }
 
@@ -173,12 +203,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun GetBinding() :ActivityMainBinding{
-        return this.binding
-    }
+
 }
 
 
+fun applySettings(){
+    val thread = Thread {
+        try {
+            try {
+                var url = "http://".plus(device).plus("/setting?");
+
+                url = url.plus("min=").plus(min.toString())
+                url = url.plus("&max=").plus(max.toString())
+                url = url.plus("&tuya_host=").plus(tuya_host)
+                url = url.plus("&tuya_api_key=").plus(api_key)
+                url = url.plus("&tuya_api_client=").plus(client_id)
+                url = url.plus("&tuya_deviceh=").plus(heating_id)
+                url = url.plus("&tuya_devicec=").plus(cooling_id)
+
+                status = URL(url).readText().toString()
+            }catch (e: Exception){
+                status = e.toString()
+            }
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    thread.start()
+
+}
 // A global coroutine to log statistics every second, must be always active
 @OptIn(DelicateCoroutinesApi::class)
 val globalScopeReporter = GlobalScope.launch {
@@ -231,8 +285,62 @@ val globalScopeReporter = GlobalScope.launch {
 
                 // binding.textViewResult.setText("blah")
             } catch (e: Exception) {
+                status = e.toString()
 
-            sleep(1000)
         }
+        sleep(1000)
+    }
+}
+
+@OptIn(DelicateCoroutinesApi::class)
+val globalScopeInit = GlobalScope.launch {
+
+    var count = 0
+
+    while (true) {
+        if (newDevice) {
+            try {
+
+                var change = false
+                var url = "http://".plus(device).plus("/get");
+
+                val result = URL(url).readText().toString()
+
+                val jsonObject = JSONTokener(result).nextValue() as JSONObject
+                val tuya_deviceh = jsonObject.getString("tuya_deviceh")
+                if (tuya_deviceh != heating_id) {
+                    heating_id = tuya_deviceh;
+                    change = true;
+                }
+                val tuya_devicec = jsonObject.getString("tuya_devicec")
+                if (tuya_devicec != cooling_id) {
+                    cooling_id = tuya_devicec;
+                    change = true;
+                }
+                val new_tuya_host = jsonObject.getString("tuya_host")
+                if (new_tuya_host != tuya_host) {
+                    tuya_host = new_tuya_host;
+                    change = true;
+                }
+
+                val tuya_api_client = jsonObject.getString("tuya_api_client")
+                if (tuya_api_client != client_id) {
+                    client_id = tuya_api_client;
+                    change = true;
+                }
+                val tuya_api_key = jsonObject.getString("tuya_api_key")
+                if (tuya_api_key != api_key) {
+                    api_key = tuya_api_key;
+                    change = true;
+                }
+                if (change) {
+                    deviceChanged = true
+                }
+                newDevice = false;
+            }catch (e: Exception){
+                status = e.toString()
+            }
+        }
+        sleep(1000)
     }
 }
