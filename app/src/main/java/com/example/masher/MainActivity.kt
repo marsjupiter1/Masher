@@ -30,13 +30,11 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 
-val  time_offset:Long = 1654717191;
+val time_offset: Long = 1654717191;
 
-class MyCustomFormatter() : IndexAxisValueFormatter()
-{
-    override fun getFormattedValue(value: Float): String
-    {
-        val dateInMillis = (value.toLong()+time_offset)*1000;
+class MyCustomFormatter() : IndexAxisValueFormatter() {
+    override fun getFormattedValue(value: Float): String {
+        val dateInMillis = (value.toLong() + time_offset) * 1000;
         val date = Calendar.getInstance().apply {
             timeInMillis = dateInMillis
         }.time
@@ -46,22 +44,22 @@ class MyCustomFormatter() : IndexAxisValueFormatter()
 }
 
 val set: ArrayList<ILineDataSet> = ArrayList()
-val low_entries:ArrayList<Entry> = ArrayList()
-val high_entries:ArrayList<Entry> = ArrayList()
-var low=0f
-var high=0f
-var device=""
-var min=0f
-var max=0f
+val low_entries: ArrayList<Entry> = ArrayList()
+val high_entries: ArrayList<Entry> = ArrayList()
+var low = 0f
+var high = 0f
+var device = ""
+var min = 0f
+var max = 0f
 var init = false
-var newDevice=true
-var deviceChanged=false
-var cooling_id=""
-var heating_id=""
-var api_key=""
-var tuya_host=""
-var client_id=""
-var status="unset"
+var newDevice = true
+var deviceChanged = false
+var cooling_id = ""
+var heating_id = ""
+var api_key = ""
+var tuya_host = ""
+var client_id = ""
+var status = "unset"
 
 class MainActivity : AppCompatActivity() {
     lateinit var binding: ActivityMainBinding
@@ -76,30 +74,29 @@ class MainActivity : AppCompatActivity() {
 
         val preferences = PreferenceManager.getDefaultSharedPreferences(applicationContext)
         preferences.registerOnSharedPreferenceChangeListener(sharedPreferenceListener)
-        device= preferences.getString("edit_text_preference_ip","")!!.toString()
-        tuya_host=preferences.getString("edit_text_preference_host","")!!.toString()
-        heating_id=preferences.getString("edit_text_preference_heating_id","")!!.toString()
-        cooling_id=preferences.getString("edit_text_preference_cooling_id","")!!.toString()
-        api_key=preferences.getString("edit_text_preference_api_key","")!!.toString()
-        client_id = preferences.getString("edit_text_preference_client_id","")!!.toString()
+        device = preferences.getString("edit_text_preference_ip", "")!!.toString()
+        tuya_host = preferences.getString("edit_text_preference_host", "")!!.toString()
+        heating_id = preferences.getString("edit_text_preference_heating_id", "")!!.toString()
+        cooling_id = preferences.getString("edit_text_preference_cooling_id", "")!!.toString()
+        api_key = preferences.getString("edit_text_preference_api_key", "")!!.toString()
+        client_id = preferences.getString("edit_text_preference_client_id", "")!!.toString()
         DataModel.init(applicationContext, preferences)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
 
-
         val sharedPref = getPreferences(Context.MODE_PRIVATE)
         min = sharedPref.getString("min", "55")!!.toFloat()
         max = sharedPref.getString("max", "57")!!.toFloat()
-         binding.editTextNumberMin.setText(min.toString())
+        binding.editTextNumberMin.setText(min.toString())
         binding.editTextNumberMax.setText(max.toString())
         binding.run.setOnClickListener {
 
-            Log.d("masher", "run");
 
+            min = binding.editTextNumberMin.getText().toString().toFloat()
+            max = binding.editTextNumberMax.getText().toString().toFloat()
             binding.debug.setText("onClick");
-
 
 
             val editor: SharedPreferences.Editor? = sharedPref?.edit()
@@ -113,9 +110,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         //GlobalScope.launch(/*Dispatchers.IO*/) {
-        GlobalScope.launch(Dispatchers.IO){
+        GlobalScope.launch(Dispatchers.IO) {
             var count = 0
-            val  chart = binding.chart
+            val chart = binding.chart
             val xAxis: XAxis = chart.getXAxis()
             val yAxis: YAxis = chart.getAxisLeft()
             yAxis.setTextSize(18f)
@@ -133,8 +130,8 @@ class MainActivity : AppCompatActivity() {
 
             while (true) {
                 count++
-                if (deviceChanged){
-                    with (preferences.edit()) {
+                if (deviceChanged) {
+                    with(preferences.edit()) {
                         putString("edit_text_preference_heating_id", heating_id)
                         putString("edit_text_preference_cooling_id", cooling_id)
                         putString("edit_text_preference_client_id", client_id)
@@ -148,7 +145,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 try {
 
-                    val c = String.format("%.1f", (low+high)/2)
+                    val c = String.format("%.1f", (low + high) / 2)
                     this@MainActivity.runOnUiThread(java.lang.Runnable {
                         binding.textViewLow.setText(String.format("%.1f", low).plus("c"))
                         binding.textViewC.setText(c.plus("c"))
@@ -173,7 +170,7 @@ class MainActivity : AppCompatActivity() {
 
                             chart.invalidate()
                         }
-                    }   )
+                    })
                 } catch (e: Exception) {
                     binding.debug.setText(e.toString())
                 }
@@ -186,7 +183,8 @@ class MainActivity : AppCompatActivity() {
         //binding = DataBindingUtil.setContentView<ActivityMainBinding>(this@MainActivity, R.layout.activity_main)
 
     }
-    override fun onCreateOptionsMenu( menu: Menu): Boolean{
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
         getMenuInflater().inflate(R.menu.main_menu, menu);
         return true;
     }
@@ -195,7 +193,7 @@ class MainActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_settings -> {
                 // navigate to settings screen
-                startActivity( Intent(this,MySettingsActivity::class.java ))
+                startActivity(Intent(this, MySettingsActivity::class.java))
                 true
             }
 
@@ -207,7 +205,7 @@ class MainActivity : AppCompatActivity() {
 }
 
 
-fun applySettings(){
+fun applySettings() {
     val thread = Thread {
         try {
             try {
@@ -220,12 +218,13 @@ fun applySettings(){
                 url = url.plus("&tuya_api_client=").plus(client_id)
                 url = url.plus("&tuya_deviceh=").plus(heating_id)
                 url = url.plus("&tuya_devicec=").plus(cooling_id)
-
-                status = URL(url).readText().toString()
-            }catch (e: Exception){
+                URL(url).readText().toString()
+                status = "applied settings ".plus(url)
+            } catch (e: Exception) {
                 status = e.toString()
             }
         } catch (e: java.lang.Exception) {
+            status = e.toString()
             e.printStackTrace()
         }
     }
@@ -233,59 +232,59 @@ fun applySettings(){
     thread.start()
 
 }
+
 // A global coroutine to log statistics every second, must be always active
 @OptIn(DelicateCoroutinesApi::class)
 val globalScopeReporter = GlobalScope.launch {
 
-        var count = 0
+    var count = 0
 
-        while (true) {
-            count++
+    while (true) {
+        count++
 
-            try {
-                var url = "http://".plus(device);
+        try {
+            var url = "http://".plus(device);
 
-                val result = URL(url).readText().toString()
+            val result = URL(url).readText().toString()
 
-                    val jsonObject = JSONTokener(result).nextValue() as JSONObject
-                    low = jsonObject.getString("low").toFloat()
-                    high = jsonObject.getString("high").toFloat()
-                    val c = String.format("%.1f", jsonObject.getString("c").toFloat())
+            val jsonObject = JSONTokener(result).nextValue() as JSONObject
+            low = jsonObject.getString("low").toFloat()
+            high = jsonObject.getString("high").toFloat()
+            val c = String.format("%.1f", jsonObject.getString("c").toFloat())
 
-                        if ((count % 10)==1) {
+            if ((count % 10) == 1) {
 
-                            low_entries.add(
-                                Entry(
-                                    (System.currentTimeMillis()/1000 -time_offset).toFloat() ,
-                                    low
-                                )
-                            )
-                            val lineDataSetLow = LineDataSet(low_entries, "")
-                            lineDataSetLow.setColor(Color.GREEN)
-                            lineDataSetLow.setDrawValues(false);
-                            lineDataSetLow.setDrawCircles(false);
-                            set.clear()
-                            set.add(lineDataSetLow)
+                low_entries.add(
+                    Entry(
+                        (System.currentTimeMillis() / 1000 - time_offset).toFloat(),
+                        low
+                    )
+                )
+                val lineDataSetLow = LineDataSet(low_entries, "")
+                lineDataSetLow.setColor(Color.GREEN)
+                lineDataSetLow.setDrawValues(false);
+                lineDataSetLow.setDrawCircles(false);
+                set.clear()
+                set.add(lineDataSetLow)
 
-                            high_entries.add(
-                                Entry(
-                                    (System.currentTimeMillis()/1000 -time_offset).toFloat(),
-                                    high
-                                )
-                            )
-                            val lineDataSetHigh = LineDataSet(high_entries, "")
-                            lineDataSetHigh.setColor(Color.RED)
-                            lineDataSetHigh.setDrawValues(false);
-                            lineDataSetHigh.setDrawCircles(false);
-                            set.add(lineDataSetHigh)
+                high_entries.add(
+                    Entry(
+                        (System.currentTimeMillis() / 1000 - time_offset).toFloat(),
+                        high
+                    )
+                )
+                val lineDataSetHigh = LineDataSet(high_entries, "")
+                lineDataSetHigh.setColor(Color.RED)
+                lineDataSetHigh.setDrawValues(false);
+                lineDataSetHigh.setDrawCircles(false);
+                set.add(lineDataSetHigh)
 
-                        }
+            }
+            status= count.toString()
 
-
-
-                // binding.textViewResult.setText("blah")
-            } catch (e: Exception) {
-                status = e.toString()
+            // binding.textViewResult.setText("blah")
+        } catch (e: Exception) {
+            status = e.toString()
 
         }
         sleep(1000)
@@ -337,7 +336,7 @@ val globalScopeInit = GlobalScope.launch {
                     deviceChanged = true
                 }
                 newDevice = false;
-            }catch (e: Exception){
+            } catch (e: Exception) {
                 status = e.toString()
             }
         }
