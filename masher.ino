@@ -21,7 +21,7 @@
 
 #include "time.h"
 #include "SPIFFS.h"
-
+#include "TuyaAuth.h"
 
 void(* resetFunc) (void) = 0; //declare reset function @ address 0
 
@@ -32,7 +32,7 @@ const int   daylightOffset_sec = 3600;
 
 
 #define BUTTON_PIN 15
-//ezButton button(BUTTON_PIN);  // create ezButton object that attach to pin 7;
+ezButton button(BUTTON_PIN);  // create ezButton object that attach to pin 7;
 
 #define CLK 18 //blue
 #define DIO 19 // green
@@ -63,366 +63,6 @@ const uint8_t SEG_CONN[] = {
 
 #define SHA256_HASH_SIZE 32
 
-
-class TuyaAuth {
-    static void auth(void *parameter) {
-
-      TuyaAuth *This = (TuyaAuth *)parameter;
-
-      HTTPClient http;
-      static time_t lastauth = 0;
-      static time_t expires_in;
-      for (;;) {
-
-        char ts[14];
-        time_t t = time(NULL);
-        // time will be offset from 0 until we have synced
-        if (t < 99999999) {
-          Serial.print("*");
-          delay(5000);
-          continue;
-        }
-        if (lastauth == 0 || t >= lastauth + expires_in) {
-          char url[200];
-          char ts[14];
-          TuyaAuth::timestamp(ts);
-          char sign[400];
-          const char *QUERY = "/v1.0/token?grant_type=1";
-          sprintf(url, "%s%s", This->host, QUERY );
-          This->getRequestAuth(ts, This->client_id, This->secret_key, QUERY, "GET", "", sign);
-
-          http.begin(url);
-
-          http.addHeader(String("t") , String(ts));
-          http.addHeader(String("sign_method"), String("HMAC-SHA256"));
-          http.addHeader(String("client_id"), String(This->client_id));
-          http.addHeader(String("sign") , String(sign));
-          int err = http.GET();
-
-
-          String body = http.getString();
-
-          if (err == 200) {
-            DynamicJsonDocument root(5000);
-
-            DeserializationError err = deserializeJson(root, body.c_str());
-
-            if (err) {
-              Serial.println("auth error");
-              Serial.println(body);
-            } else {
-              if (root.containsKey("result")) {
-                Serial.println(body);
-                Serial.println("Authorised");
-                strcpy(This->tuya_token, root["result"]["access_token"]);
-                lastauth = t;
-                expires_in = root["result"]["expire_time"];
-              } else {
-                Serial.println("missing result");
-                Serial.println(body);
-              }
-            }
-          } else {
-            Serial.println("Failed to connect");
-            Serial.println(err);
-            Serial.println(body);
-          }
-        }
-
-        delay(1000);
-      }
-    }
-
-    String join(std::vector<String> &v, String delimiter) {
-      static String j;
-      for (int i = 0; i < v.size(); i++)
-      {
-        j +=   v[i] + delimiter;
-
-      }
-      return j.substring(0, j.length() - 1);
-    }
-    std::vector<String> split (String s, String delimiter) {
-      size_t pos_start = 0, pos_end, delim_len = delimiter.length();
-      String token;
-      std::vector<String> res;
-
-      while ((pos_end = s.indexOf(delimiter, pos_start)) != -1) {
-        token = s.substring(pos_start, pos_end - pos_start);
-        pos_start = pos_end + delim_len;
-        res.push_back (token);
-      }
-
-      res.push_back (s.substring(pos_start));
-      return res;
-    }
-  public:
-    TaskHandle_t Task;
-    char tuya_token[100];
-    char client_id[33];
-    char secret_key[33];
-    char host[100];
-
-    TuyaAuth(char *h, char *c, char *secret) {
-
-      strcpy(client_id, c);
-      strcpy(secret_key, secret);
-      strcpy(host, h);
-      tuya_token[0] = '\0';
-      xTaskCreatePinnedToCore(
-        this->auth,   /* Task function. */
-        "Auth",     /* name of task. */
-        10000,       /* Stack size of task */
-        this,        /* parameter of the task */
-        1,           /* priority of the task */
-        &Task,      /* Task handle to keep track of created task */
-        0);          /* pin task to core 0 */
-
-    }
-
-    void  hmac(const char *key, const char *payload, char *out_str) {
-      uint8_t out[SHA256_HASH_SIZE];
-
-      mbedtls_md_context_t ctx;
-      mbedtls_md_type_t md_type = MBEDTLS_MD_SHA256;
-
-      const size_t payloadLength = strlen(payload);
-      const size_t keyLength = strlen(key);
-
-      mbedtls_md_init(&ctx);
-      mbedtls_md_setup(&ctx, mbedtls_md_info_from_type(md_type), 1);
-      mbedtls_md_hmac_starts(&ctx, (const unsigned char *) key, keyLength);
-      mbedtls_md_hmac_update(&ctx, (const unsigned char *) payload, payloadLength);
-      mbedtls_md_hmac_finish(&ctx, out);
-      mbedtls_md_free(&ctx);
-
-      for (int i = 0; i < sizeof(out); i++) {
-        snprintf(&out_str[i * 2], 3, "%02x", out[i]);
-        out_str[i * 2] = toupper(out_str[i * 2]);
-        out_str[i * 2 + 1] = toupper(out_str[i * 2 + 1]);
-      }
-      out_str[2 * SHA256_HASH_SIZE] = '\0';
-
-    }
-
-    void _sha256(String key, char *out) {
-      SHA256 sha;
-      char buffer[SHA256_HASH_SIZE + 1];
-      sha.update((void *)key.c_str(), (size_t)key.length());
-      sha.finalize(buffer, SHA256_HASH_SIZE);
-      for (int i = 0; i < SHA256_HASH_SIZE; i++) {
-        snprintf(&out[i * 2], 3, "%02x", buffer[i]);
-
-      }
-      out[2 * SHA256_HASH_SIZE] = '\0';
-    }
-
-
-    static void timestamp(char *out) {
-      time_t now = time(NULL);
-      // tuya wants 13 digits, but doesn't care about the final 3 just so long as the time looks currentish
-      sprintf(out, "%d999", now);
-
-    }
-
-
-    //https://developer.tuya.com/en/docs/iot/singnature?id=Ka43a5mtx1gsc
-    void getRequestSign( const char *t, const char *accessKey, const char *clientKey,  const char *secretKey, const char *url, const char *method,  const char *body, char *out) {
-
-      std::vector<String> host_params = split (String(url), String("?"));
-
-      String request = host_params[0];
-      if (host_params.size() > 1) {
-        std::vector<String> params = split(host_params[1], "&");
-        struct {
-          bool operator()(String a, String b) const {
-            return a < b;
-          }
-        } customLess;
-        std::sort(params.begin(), params.end(), customLess);
-        request += String("?") + join(params, String("&"));
-      }
-
-      char contentHash[SHA256_HASH_SIZE * 2 + 1];
-      _sha256(body, contentHash);
-      String StringToSign = String(method) + String("\n") + String(contentHash) + String("\n") + String("\n") + request;
-      String signStr = String(clientKey) + String(accessKey) + String(t) + StringToSign;
-
-      hmac(secretKey, signStr.c_str(), out);
-
-    }
-
-    //https://developer.tuya.com/en/docs/iot/singnature?id=Ka43a5mtx1gsc
-    void getRequestAuth( char *t, const char *clientKey, const char *secretKey, const char *url, const char *method, const  char *body, char *out) {
-      std::vector<String> host_params = split (String(url), String("?"));
-      String request = host_params[0];
-      String query = host_params[1];
-
-      // soring nothing here, as there is only one param currently, but things may change
-      std::vector<String> params = split(host_params[1], "&");
-      struct {
-        bool operator()(String a, String b) const {
-          return a < b;
-        }
-      } customLess;
-      std::sort(params.begin(), params.end(), customLess);
-      request += String(" ? ") + join(params, String("&"));
-
-      char contentHash[SHA256_HASH_SIZE * 2 + 1];
-      _sha256("", contentHash);
-
-      String StringToSign = String(method) + String("\n") + String(contentHash) + String("\n") + String("\n") + url;
-      String signStr = String(clientKey) + String(t) + StringToSign;
-
-      hmac(secretKey, signStr.c_str(), out);
-
-    }
-
-    bool TGetSwitch(const char *device_id, char *out) {
-
-      // are we waiting on authorisation?
-      if (strlen(tuya_token) == 0) {
-        Serial.print("@");
-        return false;
-      }
-
-      char buffer[1200];
-      char command[200];
-      sprintf(command, "/v1.0/iot-03/devices/%s/functions", device_id);
-      if (TGet(device_id, command, buffer)) {
-        Serial.println(buffer);
-        DynamicJsonDocument root(3000);
-
-        DeserializationError err = deserializeJson(root, buffer);
-
-        if (err) {
-
-          Serial.println("failed to deserialise");
-          Serial.println(out);
-          Serial.println(err.c_str());
-        } else {
-          Serial.println(out);
-
-          if (root.containsKey("result")) {
-
-            String s = root["result"]["functions"][0]["code"];
-            strcpy(out, s.c_str());
-            Serial.println("switch command");
-            Serial.println(s);
-            return true;
-          } else {
-            Serial.println("missing result");
-            Serial.println(out);
-          }
-        }
-      }
-      return false;
-    }
-
-    bool TGet(const char *device_id, const char *command, char *out) {
-
-      HTTPClient http;
-      char query[100];
-      char url[200];
-      char ts[14];
-      timestamp(ts);
-      char sign[200];
-
-      if (strlen(tuya_token) == 0) {
-        Serial.print("@");
-        return false;
-      }
-
-      TuyaAuth::timestamp(ts);
-      sprintf(url, "%s%s", this->host, command );
-
-      getRequestSign(ts, tuya_token, client_id, secret_key, command, "GET", "", sign);
-      http.begin(url);
-      http.addHeader(String("t") , String(ts));
-      http.addHeader(String("sign_method"), String("HMAC-SHA256"));
-      http.addHeader(String("client_id"), String(client_id));
-      http.addHeader(String("mode"), String("cors"));
-
-      http.addHeader(String("access_token"), String(tuya_token));
-      http.addHeader(String("sign") , String(sign));
-
-      http.addHeader(String("Content-Type"), String("application/json"));
-
-      int err = http.GET();
-
-      String body = http.getString();
-      Serial.println(body);
-      if (err == 200) {
-        strcpy(out, body.c_str());
-        return true;
-      } else {
-        Serial.println("Failed to connect");
-        Serial.println(err);
-      }
-
-      return false;
-    }
-
-    bool TCommand(const char *device_id, const char *command) {
-
-      HTTPClient http;
-      char query[100];
-      char url[200];
-      char ts[14];
-      timestamp(ts);
-      char sign[200];
-
-      if (strlen(tuya_token) == 0) {
-        Serial.print("@");
-        return false;
-      }
-
-      TuyaAuth::timestamp(ts);
-      sprintf(query, "/v1.0/iot-03/devices/%s/commands",  device_id);
-      sprintf(url, "%s%s", this->host, query );
-
-      getRequestSign(ts, tuya_token, client_id, secret_key, query, "POST", command, sign);
-      http.begin(url);
-      Serial.println(url);
-      Serial.println(command);
-
-      http.addHeader(String("t") , String(ts));
-      http.addHeader(String("sign_method"), String("HMAC-SHA256"));
-      http.addHeader(String("client_id"), String(client_id));
-      http.addHeader(String("mode"), String("cors"));
-
-      http.addHeader(String("access_token"), String(tuya_token));
-      http.addHeader(String("sign") , String(sign));
-
-      http.addHeader(String("Content-Type"), String("application/json"));
-
-      int err = http.POST(command);
-      String body = http.getString();
-      Serial.println(body);
-      if (err == 200) {
-        DynamicJsonDocument root(5000);
-
-        DeserializationError err = deserializeJson(root, body.c_str());
-
-        if (err) {
-          Serial.println("command error");
-        } else {
-          if (root.containsKey("result")) {
-
-            return true;
-          } else {
-            Serial.println("missing result");
-          }
-        }
-      } else {
-        Serial.println("Failed to connect");
-        Serial.println(err);
-      }
-
-      return false;
-    }
-
-};
 
 const uint8_t SEG_MINUS =  SEG_G; // -
 TM1637Display display(CLK, DIO);
@@ -455,10 +95,98 @@ char tuya_iph[21];
 char tuya_api_key[33];
 char tuya_api_client[21];
 char tuya_host[100];
-char tuya_switch_c[21];
-char tuya_switch_h[21];
+String tuya_switch_c;
+String tuya_switch_h;
 
 char device_name[20];
+#define MAX_CALIB 5
+float real_point[MAX_CALIB];
+float device_point[MAX_CALIB];
+
+/*
+   Login page
+*/
+const char* loginIndex =
+  "<form name='loginForm'>"
+  "<table width='20%' bgcolor='A09F9F' align='center'>"
+  "<tr>"
+  "<td colspan=2>"
+  "<center><font size=4><b>Big Button Login Page</b></font></center>"
+  "<br>"
+  "</td>"
+  "<br>"
+  "<br>"
+  "</tr>"
+  "<td>Username:</td>"
+  "<td><input type='text' size=25 name='userid'><br></td>"
+  "</tr>"
+  "<br>"
+  "<br>"
+  "<tr>"
+  "<td>Password:</td>"
+  "<td><input type='Password' size=25 name='pwd'><br></td>"
+  "<br>"
+  "<br>"
+  "</tr>"
+  "<tr>"
+  "<td><input type='submit' onclick='check(this.form)' value='Login'></td>"
+  "</tr>"
+  "</table>"
+  "</form>"
+  "<script>"
+  "function check(form)"
+  "{"
+  "if(form.userid.value=='admin' && form.pwd.value=='admin')"
+  "{"
+  "window.open('/serverIndex')"
+  "}"
+  "else"
+  "{"
+  " alert('Error Password or Username')/*displays error message*/"
+  "}"
+  "}"
+  "</script>";
+
+/*
+   Server Index Page
+*/
+
+const char* serverIndex =
+  "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
+  "<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
+  "<input type='file' name='update'>"
+  "<input type='submit' value='Update'>"
+  "</form>"
+  "<div id='prg'>progress: 0%</div>"
+  "<script>"
+  "$('form').submit(function(e){"
+  "e.preventDefault();"
+  "var form = $('#upload_form')[0];"
+  "var data = new FormData(form);"
+  " $.ajax({"
+  "url: '/update',"
+  "type: 'POST',"
+  "data: data,"
+  "contentType: false,"
+  "processData:false,"
+  "xhr: function() {"
+  "var xhr = new window.XMLHttpRequest();"
+  "xhr.upload.addEventListener('progress', function(evt) {"
+  "if (evt.lengthComputable) {"
+  "var per = evt.loaded / evt.total;"
+  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
+  "}"
+  "}, false);"
+  "return xhr;"
+  "},"
+  "success:function(d, s) {"
+  "console.log('success!')"
+  "},"
+  "error: function (a, b, c) {"
+  "}"
+  "});"
+  "});"
+  "</script>";
 
 
 
@@ -512,7 +240,7 @@ void handleGet() {
   }
 }
 
-const char index_html[] PROGMEM = R"rawliteral(
+const char style_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html><head>
 <style type="text/css">
 .form-style-2{
@@ -587,8 +315,9 @@ const char index_html[] PROGMEM = R"rawliteral(
   background: #EA7B00;
   color: #fff;
 }
-</style>
+</style>)rawliteral";
 
+const char index_html[] PROGMEM = R"rawliteral(
   <title>Thermistor Setup</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   </head><body>
@@ -601,8 +330,24 @@ const char index_html[] PROGMEM = R"rawliteral(
      <label for="api_host"><span>Tuya API url</span><input  id="api_host" type="text" maxlength="100"  name="tuya_host" value="%TUYA_HOST%"></label>
     <label for="api_id"><span>API Client Id</span><input  id="api_id" type="text" maxlength="20"  name="tuya_api_client" value="%TUYA_CLIENT%"></label>
     <label for="kh"><span>API Secret Key</span><input  id="api_key" type="text" maxlength="32" name="tuya_api_key" value="%TUYA_APIKEY%"></label>
-    <label for="idh"><span>Heating Device Id</span><input  id="idh" type="text" maxlength="20"  name="tuya_deviceh" value="%TUYA_DEVICEH%"></label>
-     <label for="idc"><span>Cooling Device Id</span><input  id="idc" type="text" maxlength="20"  name="tuya_devicec" value="%TUYA_DEVICEC%"></label>
+    <label for="idh"><span>Heating Device Id</span><input  id="idh" type="text" maxlength="22"  name="tuya_deviceh" value="%TUYA_DEVICEH%"></label>
+     <label for="idc"><span>Cooling Device Id</span><input  id="idc" type="text" maxlength="22"  name="tuya_devicec" value="%TUYA_DEVICEC%"></label>
+    <input type="submit" value="Submit">
+  </form>
+ </div>
+</body></html>)rawliteral";
+
+const char calib_html[] PROGMEM = R"rawliteral(
+  <title>Thermistor Calibration</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head><body>
+  <div class="form-style-2">
+  <div class="form-style-2-heading">Provide your reference points</div>
+  <form action="/calibrate">
+    <div>
+    <label for="r1"><span>True </span><input id="r1" type="number" name="r1" value="%R1%"></label>
+    <label for="d1"><span>Device</span><input id="d1" type="number" name="d1" value="%D1%"></label>
+    </div>
     <input type="submit" value="Submit">
   </form>
  </div>
@@ -641,7 +386,7 @@ void handleSetting() {
 
   if (server.hasArg("tuya_deviceh") ) {
     const char *tuya_device_arg = server.arg("tuya_deviceh").c_str();
-    if (strlen(tuya_device_arg) <= 20 &&  strcmp(tuya_deviceh, tuya_device_arg) != 0) {
+    if (strlen(tuya_device_arg) == 22 &&  strcmp(tuya_deviceh, tuya_device_arg) != 0) {
       strcpy(tuya_deviceh, tuya_device_arg);
       changed = true;
       reboot = true;
@@ -661,7 +406,7 @@ void handleSetting() {
 
   if (server.hasArg("tuya_devicec") ) {
     const char *tuya_device_arg = server.arg("tuya_devicec").c_str();
-    if (strlen(tuya_device_arg) == 20 &&  strcmp(tuya_devicec, tuya_device_arg) != 0) {
+    if (strlen(tuya_device_arg) == 22 &&  strcmp(tuya_devicec, tuya_device_arg) != 0) {
       strcpy(tuya_devicec, tuya_device_arg);
       changed = true;
       reboot = true;
@@ -726,7 +471,7 @@ void handleSetting() {
     }
     file.close();
   }
-  String new_index_html = index_html;
+  String new_index_html = String(style_html)+String(index_html);
   new_index_html.replace("%MIN%", String(tmin, 2));
   new_index_html.replace("%MAX%", String(tmax, 2));
   new_index_html.replace("%TUYA_DEVICEC%", tuya_devicec);
@@ -751,6 +496,60 @@ void handleSetting() {
     resetFunc();
   }
 }
+
+void handleCalib() {
+ 
+  bool changed = false;
+  bool init = false;
+
+  for (auto i = 0; i< MAX_CALIB; i++){
+ 
+    String arg = server.arg(String("r")+String(i));
+    if (atof(arg.c_str()) != real_point[i])  {
+      real_point[i] = atof(arg.c_str());
+      changed = true;
+    }
+    arg = server.arg(String("d")+String(i));
+    if (atof(arg.c_str()) != real_point[i])  {
+      device_point[i] = atof(arg.c_str());
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    String buffer = "{\"real\": [";
+    for (auto i = 0;i < MAX_CALIB;i++){
+        buffer += String(real_point[i]);
+        if (i < MAX_CALIB-1){
+          buffer +=",";
+        }
+    }
+    for (auto i = 0;i < MAX_CALIB;i++){
+        buffer += String(device_point[i]);
+        if (i < MAX_CALIB-1){
+          buffer +=",";
+        }
+    }
+    buffer +="}";
+    
+    File file = SPIFFS.open("/calib.txt", FILE_WRITE);
+    int l = buffer.length();
+
+    for (int i = 0; i <= l; i++) {
+      file.write(buffer[i]);
+    }
+    file.close();
+  }
+  String new_index_html = String(style_html)+String(calib_html);
+  for (auto i = 0; i < MAX_CALIB;i++){
+      new_index_html.replace(String("%D")+String(i)+String("%"), String(device_point[i]));
+      new_index_html.replace(String("%R")+String(i)+String("%"), String(real_point[i]));
+  }
+  server.send(200, "text/html", new_index_html);
+
+}
+
+
 
 
 void Task1code( void * parameter) {
@@ -790,11 +589,14 @@ void Task1code( void * parameter) {
 
     }
 
-    if (strlen(tuya_switch_h) == 0 && strlen(tuya_deviceh) > 0) {
+    if (tuya_switch_h.length() == 0 && strlen(tuya_deviceh) > 0) {
+      
+     Serial.println("Get H Switch");
       tuya->TGetSwitch(tuya_deviceh,  tuya_switch_h);
 
     }
-    if (strlen(tuya_switch_c) == 0 && strlen(tuya_devicec) > 0) {
+    if (tuya_switch_c.length() == 0 && strlen(tuya_devicec) > 0) {
+   Serial.println("Get C Switch");
       tuya->TGetSwitch(tuya_devicec,  tuya_switch_c);
 
     }
@@ -803,21 +605,23 @@ void Task1code( void * parameter) {
     int successHoff = -1;
     int successCoff = -1;
     if (temperature1 < tmin && temperature2 < tmin) {
-      if ( strlen(tuya_deviceh) > 0 && state != 'H' ) {
-        successHon = tuya->TCommand(tuya_deviceh, "{\"commands\":[{\"code\":\"switch\",\"value\":true}]}");
+      if ( strlen(tuya_deviceh) > 0 && state != 'H' &&tuya_switch_h.length() >0) {
+        
+       
+        successHon = tuya->TCommand(tuya_deviceh, (String("{\"commands\":[{\"code\":\"")+tuya_switch_h+String("\",\"value\":true}]}")).c_str());
       }
-      if ( strlen(tuya_devicec) > 0  && state != 'H')
+      if ( strlen(tuya_devicec) > 0  && state != 'H' &&tuya_switch_c.length() >0)
       {
-        successCoff = tuya->TCommand(tuya_devicec, "{\"commands\":[{\"code\":\"switch\",\"value\":false}]}");
+        successCoff = tuya->TCommand(tuya_devicec, (String("{\"commands\":[{\"code\":\"")+tuya_switch_c+String("\",\"value\":false}]}")).c_str());
       }
       if (successHon == 1) {
         state = 'H';
       }
     } else if  (temperature1 > tmax || temperature2 > tmax) {
-      if ( strlen(tuya_deviceh) > 0 && state != 'C') {
+      if ( strlen(tuya_deviceh) > 0 && state != 'C'  &&tuya_switch_h.length() >0) {
         successHoff = tuya->TCommand(tuya_deviceh, "{\"commands\":[{\"code\":\"switch\",\"value\":false}]}");
       }
-      if ( strlen(tuya_devicec) > 0 && state != 'C')
+      if ( strlen(tuya_devicec) > 0 && state != 'C'  &&tuya_switch_c.length() >0)
       {
         successCon = tuya->TCommand(tuya_devicec, "{\"commands\":[{\"code\":\"switch\",\"value\":true}]}");
       }
@@ -827,7 +631,7 @@ void Task1code( void * parameter) {
     }
 
 
-    delay(1000);
+    delay(2000);
   }
 
 }
@@ -855,9 +659,40 @@ bool readSettings(char *buffer) {
       Serial.println(buffer);
       return true;
     }
-    return false;
+    
   }
+  return false;
 }
+
+
+bool readCalib(char *buffer) {
+  if (SPIFFS.exists("/calib.txt")) {
+    File file = SPIFFS.open("/settings.txt", FILE_READ);
+
+    if (file) {
+
+      int pos = 0;
+
+      while (file.available()) {
+        //Serial.print(pos);
+        buffer[pos++] = file.read();
+        Serial.print(buffer[pos - 1]);
+        if (buffer[pos - 1] == '}') break;
+      }
+      buffer[pos] = '\0';
+
+      file.close();
+      Serial.println("Read buffer");
+      Serial.println(pos);
+      Serial.println(buffer);
+      return true;
+    }
+    
+  }
+  return false;
+}
+
+
 void setup(void) {
   Serial.begin(115200);
 
@@ -874,15 +709,12 @@ void setup(void) {
   tuya_devicec[0] = '\0';
   tuya_ipc[0] = '\0';
   tuya_iph[0] = '\0';
-  tuya_switch_h[0] = '\0';
-  tuya_switch_c[0] = '\0';
+
+ 
 
   strcpy(tuya_host, "https://openapi.tuyaeu.com");
   char buffer[1000];
   if (readSettings(buffer)) {
-
-
-
 
     DynamicJsonDocument root(5000);
 
@@ -947,6 +779,27 @@ void setup(void) {
     }
   }
 
+   if (readSettings(buffer)) {
+
+    DynamicJsonDocument root(5000);
+
+    DeserializationError err = deserializeJson(root, buffer);
+
+    if (!err) {
+      
+      for (auto i =0;i<MAX_CALIB;i++){
+   
+        real_point[i] = root["real"][i];
+        device_point[i] = root["device"][i];
+      }
+    } else {
+      Serial.println("json parse failed:");
+      Serial.println(err.f_str());
+      Serial.println(buffer);
+    }
+  }
+
+
 
   pinMode(BUTTON_PIN, INPUT_PULLUP); // config GIOP21 as input pin and enable the internal pull-up resistor
 
@@ -1006,7 +859,33 @@ void setup(void) {
 
   server.on("/", handleRoot);
   server.on("/setting", handleSetting);
+  server.on("/calib", handleCalib);
   server.on("/get", handleGet);
+  /*handling uploading firmware file */
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      /* flashing firmware to ESP*/
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) { //true to set the size to the current progress
+        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
 
   server.begin();
   Serial.println("HTTP server started");
@@ -1022,18 +901,18 @@ void setup(void) {
 
 void loop(void) {
   static int counter = 0;
-  //button.loop(); // MUST call the loop() function first
+  button.loop(); // MUST call the loop() function first
   server.handleClient();
 
-  //int btnState = digitalRead(BUTTON_PIN);
-  //if (button.isPressed()) {
-  //  counter++;
-  //  display.showNumberDecEx(counter);
-  //}
-  /*if(btnState== LOW){
+  int btnState = digitalRead(BUTTON_PIN);
+  if (button.isPressed()) {
+    counter++;
+    display.showNumberDecEx(counter);
+  }
+  if(btnState== LOW){
       counter++;
       display.showNumberDecEx(counter);
-    }*/
+   }
   delay(1000);//allow the cpu to switch to other tasks
   //int btnState = button.getState();
   //Serial.println(btnState);
