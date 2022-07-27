@@ -37,8 +37,7 @@ const char *SELECTED = "selected=\"selected\"";
 #define BUTTON_UP 16
 #define BUTTON_DOWN 2
 ezButton menu_button(BUTTON_MENU);
-ezButton up_button(BUTTON_UP);
-ezButton down_button(BUTTON_DOWN);
+
 
 const int thermistor_output1 = 35;
 const int thermistor_output2 = 32;
@@ -58,13 +57,13 @@ const int thermistor_output2 = 32;
   o           o
   o           o
   o           o
-  o           MEN(y)15  
+  o           MEN(y)15
   o           DOW(g)2
   GND(lcd)    o
   o           UP(r)16
   o           o
   o           o
-  o           o  
+  o           o
   o           o
   Two (W32)   o
   One(BR35)   CLK 21
@@ -72,7 +71,7 @@ const int thermistor_output2 = 32;
   o           DAT 22
   o           o
   3.2          GND
- */ 
+*/
 U8X8_ST7567_ENH_DG128064I_SW_I2C u8x8(D_CLK, D_DATA);
 
 TuyaAuth *tuya;
@@ -141,8 +140,67 @@ int green_state = 0;
 #define SET_C 5
 #define DISPLAY_STATES 6
 
+#define DATA_BASE      0
+#define DATA_DEVICE    1
+#define DATA_CONFIG    2
+
 
 int display_mode = DATA;
+int data_mode = DATA_BASE;
+
+
+void readId(char *buffer) {
+  for (int i = 0; i < 20; i++) {
+
+    buffer[i] = EEPROM.read(i);
+    buffer[i + 1] = '\0';
+  }
+}
+
+void writeId(const char *id) {
+  for (int i = 0; i <= strlen(id); i++) {
+    EEPROM.write(i, id[i]);
+  }
+  unsigned long calculatedCrc = eeprom_crc();
+  EEPROM.put(EEPROM.length() - 4, calculatedCrc);
+
+}
+
+void init_eeprom() {
+  unsigned long calculatedCrc = eeprom_crc();
+
+  // get stored crc
+  unsigned long storedCrc;
+  EEPROM.get(EEPROM.length() - 4, storedCrc);
+
+  if (storedCrc != calculatedCrc) {
+    writeId("thermistor");
+  }
+
+}
+
+unsigned long eeprom_crc(void)
+{
+
+  const unsigned long crc_table[16] =
+  {
+    0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac,
+    0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
+    0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c,
+    0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
+  };
+
+  unsigned long crc = ~0L;
+
+  for (int index = 0 ; index < EEPROM.length() - 4  ; ++index)
+  {
+    byte b = EEPROM.read(index);
+    crc = crc_table[(crc ^ b) & 0x0f] ^ (crc >> 4);
+    crc = crc_table[(crc ^ (b >> 4)) & 0x0f] ^ (crc >> 4);
+    crc = ~crc;
+  }
+  return crc;
+}
 
 String ip2Str(IPAddress ip) {
   String s = "";
@@ -268,13 +326,51 @@ double getThermistorReading(int pin) {
   return temperature;
 }
 
+class CReadings {
+  public:
+    double temperature1;
+    double temperature2;
+    double rtemperature1;
+    double rtemperature2;
+    double temperature;
+};
+
+void getReadings(class CReadings &r) {
+  r.temperature1 = getThermistorReading(thermistor_output1);
+  r.temperature2 = getThermistorReading(thermistor_output2);
+  r.rtemperature1 = r.temperature1;
+  r.rtemperature2 = r.temperature2;
+  r.temperature = (r.temperature1 + r.temperature2) / 2;
+
+  switch (mode) {
+    case AVERAGE:
+      r.temperature = calibrate((r.temperature1 + r.temperature2) / 2);
+      break;
+    case   ONE_CALIB:
+      r.temperature = calibrate(r.temperature1 );
+      break;
+    case   TWO_CALIB:
+      r.temperature = calibrate(r.temperature2 );
+      break;
+    case   ONE_RAW:
+      r.temperature = r.temperature1 ;
+      break;
+    case   TWO_RAW:
+      r.temperature = r.temperature2 ;
+      break;
+    case CALIB:
+      r.temperature = (r.temperature1 + r.temperature2) / 2;
+      break;
+  }
+}
+
 
 void handleRoot() {
-  char buffer[100];
-  double temperature1 = getThermistorReading(thermistor_output1);
-  double temperature2 = getThermistorReading(thermistor_output2);
-  double temperature = (temperature1 + temperature2) / 2;
-  sprintf(buffer, " {\"c\":%f,\"low\":%f,\"high\":%f,\"one\":%f,\"two\":%f}", temperature, temperature1 < temperature2 ? temperature1 : temperature2, temperature1 > temperature2 ? temperature1 : temperature2,temperature1,temperature2);
+  char buffer[160];
+  class CReadings r;
+  getReadings(r);
+  sprintf(buffer, " {\"c\":%f,\"low\":%f,\"high\":%f,\"one\":%f,\"two\":%f,\"rone\":%f,\"rtwo\":%f}",
+          r.temperature, r.temperature1 < r.temperature2 ? r.temperature1 : r.temperature2, r.temperature1 > r.temperature2 ? r.temperature1 : r.temperature2, r.temperature1, r.temperature2, r.rtemperature1, r.rtemperature2);
   server.send(200, "text/plain", buffer);
 
 }
@@ -428,6 +524,7 @@ const char calib_html[] PROGMEM = R"rawliteral(
 
 void saveSettings() {
   char buffer[1000];
+  Serial.println("save settings");
   sprintf(buffer, "{\"min\":\"%f\",\"max\":\"%f\",\"tuya_deviceh\":\"%s\",\"tuya_keyh\":\"%s\",\"tuya_devicec\":\"%s\",\"tuya_keyc\":\"%s\",\"ipc\":\"%s\",\"iph\":\"%s\",\"tuya_api_key\": \"%s\",\"tuya_api_client\": \"%s\",\"tuya_host\": \"%s\",\"mode\": \"%d\",\"smart\": \"%d\"}",
           tmin, tmax, tuya_deviceh, tuya_keyh, tuya_devicec, tuya_keyc, ipc, iph, tuya_api_key, tuya_api_client, tuya_host, mode, smart);
 
@@ -716,49 +813,96 @@ void blinkText(int x, int y, const char *text) {
 
 #define STATUS_LINE 0
 #define MINMAX_LINE 1
-#define HEATER_STATUSX 0
-#define COOLER_STATUSX 1
+#define PLUG_STATUSX 0
 #define WIFI_STATUSX 0
 #define TIMEX 80
 #define BLINK_TIME 500
 
 void writeTmin() {
-   char buffer[8];
- sprintf(buffer,"L:%2.1f",tmin);
+
+  if (display_mode != DATA || data_mode != DATA_BASE) return;
+  char buffer[8];
+  sprintf(buffer, "L:%2.1f", tmin);
 
   u8x8.drawString(0, MINMAX_LINE, buffer);
 }
 
 void writeTmax() {
-
- char buffer[8];
- sprintf(buffer,"H:%2.1f",tmax);
+  if (display_mode != DATA || data_mode != DATA_BASE) return;
+  char buffer[8];
+  sprintf(buffer, "H:%2.1f", tmax);
   u8x8.drawString(8, MINMAX_LINE, buffer);
 }
 
-void showData() {
-  String local_ip = ip2Str(WiFi.localIP());
+void showDataDevice() {
+  Serial.println("showDataDevice");
+  class CReadings r;
+  getReadings(r);
   std::lock_guard<std::mutex> lck(display_mtx);
-  blink = !blink;
-  u8x8.setFont(u8x8_font_amstrad_cpc_extended_r);
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  char buffer[10];
+  sprintf(buffer, "%2.1f", r.temperature);
+  u8x8.drawString(0, 0, "T:"); u8x8.drawString(2, 0, buffer);
+  sprintf(buffer, "%2.1f", r.temperature1);
+  u8x8.drawString(0, 1, "1:"); u8x8.drawString(2, 1, buffer);
+  sprintf(buffer, "%2.1f", r.temperature2);
+  u8x8.drawString(8, 1, "2:"); u8x8.drawString(11, 1, buffer);
+  sprintf(buffer, "%2.1f", r.rtemperature1);
+  u8x8.drawString(0, 2, "R:"); u8x8.drawString(2, 2, buffer);
+  sprintf(buffer, "%2.1f", r.rtemperature2);
+  u8x8.drawString(8, 2, "R:"); u8x8.drawString(11, 2, buffer);
+  sprintf(buffer, "%2.1f", tmin);
+  u8x8.drawString(0, 3, "L:"); u8x8.drawString(2, 3, buffer);
+  sprintf(buffer, "%2.1f", tmax);
+  u8x8.drawString(8, 3, "H:"); u8x8.drawString(11, 3, buffer);
+}
 
+void showDataConfig() {
+   char buffer[30];
+  std::lock_guard<std::mutex> lck(display_mtx);
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.drawString(0, 0, device_name);
+  time_t t=  time(NULL);
+  sprintf(buffer,"%ld",t);
+  u8x8.drawString(0, 1,buffer);
+  struct tm* tm_info;
 
-  if (haveHeater() && state=='H') {
+  tm_info = localtime(&t);
+  strftime(buffer, 26, "%H:%M:%S", tm_info);
+  u8x8.drawString(0, 2,buffer);
+  u8x8.drawString(0, 3,"Heating ip");
+  u8x8.drawString(0, 4,iph);
+  u8x8.drawString(0, 5,"Cooling ip");
+  u8x8.drawString(0, 6,ipc);
+}
+
+void showDataBase() {
+  String local_ip = ip2Str(WiFi.localIP());
+
+  std::lock_guard<std::mutex> lck(display_mtx);
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
+
+  bool written = false;
+  if (haveHeater() && state == 'H') {
     if (red_state == FOUND_SWITCH) {
-      u8x8.drawString(HEATER_STATUSX, STATUS_LINE, "Heating");
+      u8x8.drawString(PLUG_STATUSX, STATUS_LINE, "Heat  ");
     } else {
-      blinkText(HEATER_STATUSX, STATUS_LINE, "H");
+      blinkText(PLUG_STATUSX, STATUS_LINE, "E:Heat");
     }
-
+    written = true;
   }
- 
+
   if (haveCooler() && state == 'C') {
     if (green_state == FOUND_SWITCH) {
-      u8x8.drawString(COOLER_STATUSX, STATUS_LINE, "Cooling");
+      u8x8.drawString(PLUG_STATUSX, STATUS_LINE, "Cool  ");
     } else {
-      blinkText(COOLER_STATUSX, STATUS_LINE, "Cooling");
+      blinkText(PLUG_STATUSX, STATUS_LINE, "E:Cool");
     }
+      written = true;
 
+  }
+  if (!written){
+    u8x8.drawString(PLUG_STATUSX, STATUS_LINE, " off ");
   }
 
   if (white_state == WIFI_CONF) {
@@ -769,20 +913,39 @@ void showData() {
     blinkText(WIFI_STATUSX, 7, "WiFi: Boot");
   }
 
-       
-
-
   writeTmin();
   writeTmax();
 }
 
+void showData() {
+  if (display_mode != DATA) return;
+
+
+
+  blink = !blink;
+  switch (data_mode) {
+    case DATA_BASE:
+      showDataBase();
+      break;
+    case DATA_DEVICE:
+      showDataDevice();
+      break;
+    case DATA_CONFIG:
+      showDataConfig();
+      break;
+  }
+}
+
 void statusTask( void * parameter) {
 
-
+  int count = 0;
 
 
   for (;;) {
+    count++;
+    if ((count % 200) == 0) {
 
+    }
     if (display_mode == DATA) {
       showData();
     }
@@ -833,8 +996,9 @@ bool tuya_switch_h(bool on) {
 
 
 bool switch_h(bool on) {
-  if (strlen(tuya_deviceh) == 0) return true;
+ 
   if (smart == TUYA) {
+    if (strlen(tuya_deviceh) == 0) return true;
     return tuya_switch_h(on);
   } else {
     return tasmota_switch_h(on);
@@ -936,57 +1100,40 @@ void findSwitches() {
 
 }
 
-void Task1code( void * parameter) {
-
-
-  for (;;) {
-    double temperature1 = getThermistorReading(thermistor_output1);
-    double temperature2 = getThermistorReading(thermistor_output2);
-
-
 #define AVERAGE 0
 #define ONE_CALIB 2
 #define TWO_CALIB 3
 #define ONE_RAW 4
 #define TWO_RAW 5
 #define CALIB 1
-    double temperature = 9999;
-    switch (mode) {
-      case AVERAGE:
-        temperature = calibrate((temperature1 + temperature2) / 2);
-        break;
-      case   ONE_CALIB:
-        temperature = calibrate(temperature1 );
-        break;
-      case   TWO_CALIB:
-        temperature = calibrate(temperature2 );
-        break;
-      case   ONE_RAW:
-        temperature = temperature1 ;
-        break;
-      case   TWO_RAW:
-        temperature = temperature2 ;
-        break;
-      case CALIB:
-        temperature = (temperature1 + temperature2) / 2;
-        break;
+
+void Task1code( void * parameter) {
+
+  class CReadings r;
+  for (;;) {
+
+    if (digitalRead(BUTTON_UP) == LOW) {
+      if (white_state == WIFI_CONF) {
+        resetFunc();
+      }
     }
+    getReadings(r);
 
 
     char buffer[60];
-    sprintf(buffer, "%2.2f %2.2f %2.2f", temperature, temperature1, temperature2);
- //Serial.print("display mode:");Serial.println(display_mode);
-    if (display_mode == DATA) {
+    sprintf(buffer, "%2.2f %2.2f %2.2f", r.temperature, r.temperature1, r.temperature2);
+    //Serial.print("display mode:");Serial.println(display_mode);
+    if (display_mode == DATA && data_mode == DATA_BASE) {
       std::lock_guard<std::mutex> lck(display_mtx);
       char t[6];
-      sprintf(t, "%2.1f", temperature);
+      sprintf(t, "%2.1f", r.temperature);
       u8x8.setFont(u8x8_font_profont29_2x3_f);
       u8x8.drawString(0, 3, t);
 
-      sprintf(t, "One: %2.1f", temperature1);
-      u8x8.setFont(u8x8_font_amstrad_cpc_extended_r);
+      sprintf(t, "One: %2.1f", r.temperature1);
+      u8x8.setFont(u8x8_font_chroma48medium8_r);
       u8x8.drawString(6, 2, t);
-      sprintf(t, "Two:%2.1f", temperature2);
+      sprintf(t, "Two:%2.1f", r.temperature2);
       u8x8.drawString(6, 6, t);
     }
 
@@ -997,7 +1144,8 @@ void Task1code( void * parameter) {
     int successCon = -1;
     int successHoff = -1;
     int successCoff = -1;
-    if (temperature1 < tmin && temperature2 < tmin) {
+    Serial.println(state);
+    if (r.temperature1 < tmin && r.temperature2 < tmin) {
       if ( state != 'H' ) {
         successHon = switch_h(true);
       }
@@ -1008,7 +1156,7 @@ void Task1code( void * parameter) {
       if (successHon == 1) {
         state = 'H';
       }
-    } else if  (temperature1 > tmax || temperature2 > tmax) {
+    } else if  (r.temperature1 > tmax || r.temperature2 > tmax) {
       if ( state != 'C' ) {
         successHoff = switch_h(false);
       }
@@ -1022,7 +1170,7 @@ void Task1code( void * parameter) {
     }
 
 
-    delay(2000);
+    delay(500);
   }
 
 }
@@ -1221,8 +1369,9 @@ void setup(void) {
 
   Serial.println("read eeprom");
 
-  pinMode(BUTTON_MENU, INPUT_PULLUP); // config GIOP21 as input pin and enable the internal pull-up resistor
-
+  pinMode(BUTTON_UP, INPUT_PULLUP);
+  pinMode(BUTTON_DOWN, INPUT_PULLUP);
+  //pinMode(BUTTON_MENU, INPUT_PULLUP);
 
 
   EEPROM.begin(EEPROM_SIZE);
@@ -1242,25 +1391,36 @@ void setup(void) {
   Serial.println(device_name);
 
   Serial.println("create led status task");
-  u8x8.setI2CAddress(0x3F*2);
+  u8x8.setI2CAddress(0x3F * 2);
   u8x8.begin();
   u8x8.clearDisplay();
-  u8x8.setFont(u8x8_font_chroma48medium8_r);
 
+  white_state = BOOT;
+  xTaskCreatePinnedToCore(
+    statusTask,   /* Task function. */
+    "Status",     /* name of task. */
+    2000,       /* Stack size of task */
+    NULL,        /* parameter of the task */
+    1,           /* priority of the task */
+    &TaskStatus,      /* Task handle to keep track of created task */
+    0);
   Serial.println("wifi connection");
   WiFiManagerParameter MDNSName("device_name", "Device Name", device_name, 19);
   wifiManager.addParameter(&MDNSName);
 
   wifiManager.setEnableConfigPortal(false);
+
   if (!wifiManager.autoConnect("AutoConnectAP", "password")) {
-   
+
     white_state = WIFI_CONF;
+    std::lock_guard<std::mutex> lck(display_mtx);
+    u8x8.setFont(u8x8_font_chroma48medium8_r);
     u8x8.clearDisplay();
-    u8x8.drawString(0,0,"Setup Wifi");
-    u8x8.drawString(0,1,"Connect to");
-    u8x8.drawString(0,2,"ConfWiFi then");
-    u8x8.drawString(0,3,"open 192.168.4.1");
-    u8x8.drawString(0,4,"In Browser");
+    u8x8.drawString(0, 0, "Setup Wifi");
+    u8x8.drawString(0, 1, "Connect to");
+    u8x8.drawString(0, 2, "ConfWiFi then");
+    u8x8.drawString(0, 3, "open 192.168.4.1");
+    u8x8.drawString(0, 4, "In Browser");
     wifiManager.startConfigPortal("ConfWiFi");
     const char *new_name = MDNSName.getValue();
     if (strcmp(new_name, device_name) != 0) {
@@ -1271,15 +1431,8 @@ void setup(void) {
       strcpy(device_name, new_name);
     }
   }
-   u8x8.clearDisplay();
-  xTaskCreatePinnedToCore(
-    statusTask,   /* Task function. */
-    "Status",     /* name of task. */
-    2000,       /* Stack size of task */
-    NULL,        /* parameter of the task */
-    1,           /* priority of the task */
-    &TaskStatus,      /* Task handle to keep track of created task */
-    0);
+
+
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
 
@@ -1308,7 +1461,7 @@ void setup(void) {
   server.on("/calibrate", handleCalib);
   server.on("/get", handleGet);
   /*handling uploading firmware file */
-    server.on("/login", HTTP_GET, []() {
+  server.on("/login", HTTP_GET, []() {
     server.sendHeader("Connection", "close");
     server.send(200, "text/html", loginIndex);
   });
@@ -1353,15 +1506,18 @@ void setup(void) {
 
 }
 
-#define MODE_LINE 7
-#define MODE_POS  6
+#define MODE_LINE 0
+#define MODE_POS  7
 void show_mode() {
+  if (data_mode != DATA_BASE) return;
+  std::lock_guard<std::mutex> lck(display_mtx);
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
   switch (mode) {
     case DATA:
-      u8x8.drawString(MODE_POS, MODE_LINE, "data");
+      u8x8.drawString(MODE_POS, MODE_LINE, "data   ");
       break;
     case CALIB:
-      u8x8.drawString(MODE_POS, MODE_LINE, "calib");
+      u8x8.drawString(MODE_POS, MODE_LINE, "calib  ");
       break;
     case ONE_RAW:
       u8x8.drawString(MODE_POS, MODE_LINE, "raw:one");
@@ -1382,7 +1538,7 @@ void show_mode() {
 void writeMode() {
 
   std::lock_guard<std::mutex> lck(display_mtx);
-   u8x8.setFont(u8x8_font_chroma48medium8_r);
+  u8x8.setFont(u8x8_font_chroma48medium8_r);
   switch (display_mode) {
 
     case SET_HIGH:
@@ -1391,33 +1547,33 @@ void writeMode() {
     case SET_LOW:
       u8x8.drawString(0, 4, (String("SET LOW: ") + String(tmin)).c_str());
       break;
-    case SET_MODE:{
-     
-      String mode_string = "SET MODE: ";
-      switch (mode) {
-        case DATA:
-          mode_string += "Data";
-          break;
-        case CALIB:
-          mode_string += "Calib";
-          break;
-        case ONE_RAW:
-          u8x8.drawString(MODE_POS, MODE_LINE, "raw:one");
-          break;
-        case TWO_RAW:
-          u8x8.drawString(MODE_POS, MODE_LINE, "raw:two");
-          break;
-        case ONE_CALIB:
-          u8x8.drawString(MODE_POS, MODE_LINE, "cal: one");
-          break;
-        case TWO_CALIB:
-          u8x8.drawString(MODE_POS, MODE_LINE, "cal:two");
-          break;
-      }
+    case SET_MODE: {
 
-      u8x8.drawString(0, 4, mode_string.c_str());
-      break;
-    }  
+        String mode_string = "SET MODE: ";
+        switch (mode) {
+          case DATA:
+            mode_string += "Data";
+            break;
+          case CALIB:
+            mode_string += "Calib";
+            break;
+          case ONE_RAW:
+            u8x8.drawString(MODE_POS, MODE_LINE, "raw:one");
+            break;
+          case TWO_RAW:
+            u8x8.drawString(MODE_POS, MODE_LINE, "raw:two");
+            break;
+          case ONE_CALIB:
+            u8x8.drawString(MODE_POS, MODE_LINE, "cal:one");
+            break;
+          case TWO_CALIB:
+            u8x8.drawString(MODE_POS, MODE_LINE, "cal:two");
+            break;
+        }
+
+        u8x8.drawString(0, 4, mode_string.c_str());
+        break;
+      }
     case SET_H:
       if (state == 'H') {
         u8x8.drawString(MODE_POS, MODE_LINE, "Heat: On");
@@ -1434,14 +1590,22 @@ void writeMode() {
 
 }
 
+#define REPEAT_TIME 200
+#define REPEAT_TIME_INC 5
+long ms = 0;
+int repeat_count = 0;
+bool changed = false;
 void loop(void) {
 
   menu_button.loop(); // MUST call the loop() function first
-  up_button.loop();
-  down_button.loop();
+
   server.handleClient();
-  bool changed = false;
+
+  bool do_action = false;
+
+  show_mode();
   if (menu_button.isPressed()) {
+    //if (digitalRead(BUTTON_MENU) == HIGH) {
 
     Serial.println("Seen menu");
     if (mode != DISPLAY  && changed) {
@@ -1449,7 +1613,12 @@ void loop(void) {
       changed = false;
     }
     display_mode = (display_mode + 1) % DISPLAY_STATES;
-    u8x8.clearDisplay();
+    {
+
+      std::lock_guard<std::mutex> lck(display_mtx);
+
+      u8x8.clearDisplay();
+    }
     if (display_mode == SET_H && strlen(tuya_deviceh) == 0) display_mode++;
     if (display_mode == SET_C && strlen(tuya_devicec) == 0) display_mode = 0;
 
@@ -1457,125 +1626,100 @@ void loop(void) {
 
   }
 
-  if (up_button.isPressed()) {
+  if (digitalRead(BUTTON_UP) == LOW) {
+    if ( millis() > ms + REPEAT_TIME  ) {
+      do_action = true;
+      repeat_count++;
+      ms = millis();
+    }
+    Serial.print("Seen up:"); Serial.println(repeat_count);
+    if (do_action) {
+      switch (display_mode) {
 
-    Serial.println("Seen up");
-    switch (display_mode) {
-      case SET_HIGH:
-        tmax += 0.1;
-        writeMode();
-        changed = true;
-        break;
-      case SET_LOW:
-        tmin += 0.1;
-        writeMode();
-        changed = true;
-        break;
-      case SET_MODE:
-        mode = (mode + 1) % MODE_STATES;
-        writeMode();
-        changed = true;
-      case SET_H:
-        switch_h(true);
+        case DATA: {
+            std::lock_guard<std::mutex> lck(display_mtx);
+            u8x8.begin();
+            break;
+          }
+        case SET_HIGH:
+          tmax += 0.1 + (0.1 * (repeat_count > 2 ? repeat_count - 3 : 0 ));
+          writeMode();
+          changed = true;
+          break;
+        case SET_LOW:
+          tmin += + (0.1 * (repeat_count > 2 ? repeat_count - 3 : 0 ));
+          writeMode();
+          changed = true;
+          break;
+        case SET_MODE:
+          mode = (mode + 1) % MODE_STATES;
+          writeMode();
+          changed = true;
+        case SET_H:
+          switch_h(true);
 
-        state = 'H';
-        break;
-      case SET_C:
-        switch_h(true);
+          state = 'H';
+          break;
+        case SET_C:
+          switch_h(true);
 
-        state = 'C';
-        break;
+          state = 'C';
+          break;
+      }
     }
   }
-  if (down_button.isPressed()) {
-    Serial.println("Seen down");
-
-    switch (display_mode) {
-      case SET_HIGH:
-        tmax -= 0.1;
-        writeMode();
-        changed = true;
-        break;
-      case SET_LOW:
-        tmin -= 0.1;
-        writeMode();
-        changed = true;
-        break;
-      case SET_MODE:
-        mode = (mode + MODE_STATES - 1) % MODE_STATES;
-        changed = true;
-        writeMode();
-        break;
-      case SET_H:
-        switch_h(false);
-
-        state = 'C';
-        break;
-      case SET_C:
-        switch_h(false);
-
-        state = 'H';
-        break;
+  if (digitalRead(BUTTON_DOWN) == LOW) {
+    if ( millis() > ms + REPEAT_TIME) {
+      do_action = true;
+      repeat_count++;
+      ms = millis();
     }
+    if (do_action) {
+      Serial.println("Seen down");
+
+      switch (display_mode) {
+        case DATA:  {
+            data_mode = (data_mode + 1) % 3;
+            std::lock_guard<std::mutex> lck(display_mtx);
+            u8x8.begin();
+            break;
+          }
+        case SET_HIGH:
+          tmax -= 0.1 + (0.1 * (repeat_count > 2 ? repeat_count - 3 : 0 ));;
+          writeMode();
+          changed = true;
+          break;
+        case SET_LOW:
+          tmin -= 0.1 + (0.1 * (repeat_count > 2 ? repeat_count - 3 : 0 ));;
+          writeMode();
+          changed = true;
+          break;
+        case SET_MODE:
+          mode = (mode + MODE_STATES - 1) % MODE_STATES;
+          changed = true;
+          writeMode();
+          break;
+        case SET_H:
+          switch_h(false);
+
+          state = 'C';
+          break;
+        case SET_C:
+          switch_h(false);
+
+          state = 'H';
+          break;
+      }
+    }
+  }
+  if (digitalRead(BUTTON_DOWN) == HIGH && digitalRead(BUTTON_UP) == HIGH) {
+    repeat_count = 0;
+    writeMode();
   }
 
 
-
-  delay(20);//allow the cpu to switch to other tasks
+  delay(10);//allow the cpu to switch to other tasks
   //int btnState = button.getState();
   //Serial.println(btnState);
 
-}
-
-void readId(char *buffer) {
-  for (int i = 0; i < 20; i++) {
-
-    buffer[i] = EEPROM.read(i);
-    buffer[i + 1] = '\0';
-  }
-}
-
-void writeId(const char *id) {
-  for (int i = 0; i <= strlen(id); i++) {
-    EEPROM.write(i, id[i]);
-  }
-  unsigned long calculatedCrc = eeprom_crc();
-  EEPROM.put(EEPROM.length() - 4, calculatedCrc);
-
-}
-
-void init_eeprom() {
-  unsigned long calculatedCrc = eeprom_crc();
-
-  // get stored crc
-  unsigned long storedCrc;
-  EEPROM.get(EEPROM.length() - 4, storedCrc);
-
-  if (storedCrc != calculatedCrc) {
-    writeId("thermistor");
-  }
-
-}
-
-unsigned long eeprom_crc(void)
-{
-
-  const unsigned long crc_table[16] =
-  {
-    0x00000000, 0x1db71064, 0x3b6e20c8, 0x26d930ac,
-    0x76dc4190, 0x6b6b51f4, 0x4db26158, 0x5005713c,
-    0xedb88320, 0xf00f9344, 0xd6d6a3e8, 0xcb61b38c,
-    0x9b64c2b0, 0x86d3d2d4, 0xa00ae278, 0xbdbdf21c
-  };
-
-  unsigned long crc = ~0L;
-
-  for (int index = 0 ; index < EEPROM.length() - 4  ; ++index)
-  {
-    byte b = EEPROM.read(index);
-    crc = crc_table[(crc ^ b) & 0x0f] ^ (crc >> 4);
-    crc = crc_table[(crc ^ (b >> 4)) & 0x0f] ^ (crc >> 4);
-    crc = ~crc;
-  }
-  return crc;
 }
